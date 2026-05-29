@@ -5,7 +5,7 @@ output: html_document
 
 # Advanced Visualization in R
 
-While base R has useful plotting tools, `ggplot2` (part of the `tidyverse`) is the standard for sophisticated statistical visualization. It is the R equivalent to Python's `seaborn` and `plotnine`.
+While base R has useful plotting tools, `ggplot2` (part of the `tidyverse`) is the standard for sophisticated, publication-quality statistical visualization in R.
 
 ```{r setup, message=FALSE, warning=FALSE}
 library(tidyverse)
@@ -33,7 +33,7 @@ ggplot(iris, aes(x = Sepal.Length, fill = Species)) +
 
 ### Pair Plots
 
-In R, the `GGally` package provides a powerful equivalent to Seaborn's `pairplot`.
+In R, the `GGally` package provides a powerful pairplot function, `ggpairs()`, which shows pairwise relationships between all variables in a dataset.
 
 ```{r, message=FALSE}
 ggpairs(iris, aes(color = Species, alpha = 0.5))

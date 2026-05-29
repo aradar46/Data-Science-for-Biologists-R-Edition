@@ -55,11 +55,11 @@ tidy(metabric_fit)
 We explore Decision Trees and Random Forests using the CPS Wages dataset.
 
 ```{r}
-# Load CPS Wages
-wages_url <- "http://lib.stat.cmu.edu/datasets/CPS_85_Wages"
-wages <- read_table(wages_url, skip = 27, col_names = FALSE) %>%
-  select(X1, X4, X6, X7)
-colnames(wages) <- c("EDUCATION", "EXPERIENCE", "WAGE", "AGE")
+# Load CPS Wages from AER package
+data("CPS1985", package = "AER")
+wages <- CPS1985 %>%
+  select(EDUCATION = education, EXPERIENCE = experience, WAGE = wage, AGE = age) %>%
+  mutate(across(everything(), as.numeric))
 ```
 
 ### Random Forest Regression

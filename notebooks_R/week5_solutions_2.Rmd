@@ -18,7 +18,7 @@ library(vip)
 ```{r}
 # Load diabetes data
 data(diabetes)
-diabetes_df <- as_tibble(diabetes$x) %>%
+diabetes_df <- as_tibble(as.data.frame(unclass(diabetes$x))) %>%
   mutate(target = diabetes$y)
 ```
 
@@ -52,7 +52,7 @@ rf_spec <- rand_forest() %>%
   set_mode("regression")
 
 rf_fit <- rf_spec %>%
-  fit(target ~ age + bmi + bp, data = diab_train)
+  fit(target ~ age + bmi + map, data = diab_train)
 
 # Evaluate
 rf_results <- diab_test %>%

@@ -32,8 +32,7 @@ library(corrplot)
 ## Data Overview
 
 ```{r}
-# Input data
-metabric <- read_csv("../data/metabric_clinical_and_expression_data.csv")
+metabric <- read_csv("../../data/metabric_clinical_and_expression_data.csv")
 
 # Dimensions
 dim(metabric)

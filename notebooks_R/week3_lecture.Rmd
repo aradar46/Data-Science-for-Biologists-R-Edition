@@ -1,5 +1,5 @@
 ---
-title: "week3_lecture.ipynb"
+title: "Week 3 - Key Concepts in Statistics and Machine Learning"
 output: html_document
 ---
 

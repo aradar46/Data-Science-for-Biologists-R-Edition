@@ -1,47 +1,37 @@
 ---
-title: "04.15-Further-Resources.ipynb"
+title: "Further Resources for Data Visualisation in R"
 output: html_document
 ---
 
-<!--BOOK_INFORMATION-->
-<img align="left" style="padding-right:10px;" src="figures/PDSH-cover-small.png">
-
-*This notebook contains an excerpt from the [Python Data Science Handbook](http://shop.oreilly.com/product/0636920034919.do) by Jake VanderPlas; the content is available [on GitHub](https://github.com/jakevdp/PythonDataScienceHandbook).*
-
-*The text is released under the [CC-BY-NC-ND license](https://creativecommons.org/licenses/by-nc-nd/3.0/us/legalcode), and code is released under the [MIT license](https://opensource.org/licenses/MIT). If you find this content useful, please consider supporting the work by [buying the book](http://shop.oreilly.com/product/0636920034919.do)!*
-
-<!--NAVIGATION-->
-< [Visualization with Seaborn](04.14-Visualization-With-Seaborn.ipynb) | [Contents](Index.ipynb) | [Machine Learning](05.00-Machine-Learning.ipynb) >
-
-<a href="https://colab.research.google.com/github/jakevdp/PythonDataScienceHandbook/blob/master/notebooks/04.15-Further-Resources.ipynb"><img align="left" src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open in Colab" title="Open and Execute in Google Colaboratory"></a>
-
-
 # Further Resources
 
-## Matplotlib Resources
+## ggplot2 Resources
 
-A single chapter in a book can never hope to cover all the available features and plot types available in Matplotlib.
-As with other packages we've seen, liberal use of IPython's tab-completion and help functions (see [Help and Documentation in IPython](01.01-Help-And-Documentation.ipynb)) can be very helpful when exploring Matplotlib's API.
-In addition, Matplotlib’s [online documentation](http://matplotlib.org/) can be a helpful reference.
-See in particular the [Matplotlib gallery](http://matplotlib.org/gallery.html) linked on that page: it shows thumbnails of hundreds of different plot types, each one linked to a page with the Python code snippet used to generate it.
-In this way, you can visually inspect and learn about a wide range of different plotting styles and visualization techniques.
+A single chapter in a book can never hope to cover all the available features and plot types available in `ggplot2`. Here are some essential resources to deepen your skills:
 
-For a book-length treatment of Matplotlib, I would recommend [*Interactive Applications Using Matplotlib*](https://www.packtpub.com/application-development/interactive-applications-using-matplotlib), written by Matplotlib core developer Ben Root.
+- The **[ggplot2 documentation](https://ggplot2.tidyverse.org/reference/)** is comprehensive and includes examples for every function and geom.
+- The **[R Graph Gallery](https://r-graph-gallery.com/)** shows hundreds of chart types with reproducible R code — an excellent reference for finding the right visualisation for your data.
+- **[ggplot2: Elegant Graphics for Data Analysis](https://ggplot2-book.org/)** by Hadley Wickham is the definitive textbook on ggplot2, freely available online.
 
-## Other Python Graphics Libraries
+## ggplot2 Extensions
 
-Although Matplotlib is the most prominent Python visualization library, there are other more modern tools that are worth exploring as well.
-I'll mention a few of them briefly here:
+The `ggplot2` ecosystem has a rich set of extension packages that add new geoms, themes, and capabilities:
 
-- [Bokeh](http://bokeh.pydata.org) is a JavaScript visualization library with a Python frontend that creates highly interactive visualizations capable of handling very large and/or streaming datasets. The Python front-end outputs a JSON data structure that can be interpreted by the Bokeh JS engine.
-- [Plotly](http://plot.ly) is the eponymous open source product of the Plotly company, and is similar in spirit to Bokeh. Because Plotly is the main product of a startup, it is receiving a high level of development effort. Use of the library is entirely free.
-- [Vispy](http://vispy.org/) is an actively developed project focused on dynamic visualizations of very large datasets. Because it is built to target OpenGL and make use of efficient graphics processors in your computer, it is able to render some quite large and stunning visualizations.
-- [Vega](https://vega.github.io/) and [Vega-Lite](https://vega.github.io/vega-lite) are declarative graphics representations, and are the product of years of research into the fundamental language of data visualization. The reference rendering implementation is JavaScript, but the API is language agnostic. There is a Python API under development in the [Altair](https://altair-viz.github.io/) package. Though as of summer 2016 it's not yet fully mature, I'm quite excited for the possibilities of this project to provide a common reference point for visualization in Python and other languages.
+- **[ggplot2 extensions gallery](https://exts.ggplot2.tidyverse.org/)** — a curated catalogue of community-contributed extensions.
+- **[patchwork](https://patchwork.data-imaginist.com/)** — compose multiple ggplot2 panels into a single figure with a simple, intuitive API.
+- **[ggrepel](https://ggrepel.slowkow.com/)** — automatically repositions text labels to avoid overlapping.
+- **[gganimate](https://gganimate.com/)** — add animation to ggplot2 figures.
+- **[plotly](https://plotly.com/r/)** — convert ggplot2 figures into interactive, web-based charts with a single call to `ggplotly()`.
 
-The visualization space in the Python community is very dynamic, and I fully expect this list to be out of date as soon as it is published.
-Keep an eye out for what's coming in the future!
+## Interactive Visualisation
 
-<!--NAVIGATION-->
-< [Visualization with Seaborn](04.14-Visualization-With-Seaborn.ipynb) | [Contents](Index.ipynb) | [Machine Learning](05.00-Machine-Learning.ipynb) >
+For web-embedded, fully interactive charts:
 
-<a href="https://colab.research.google.com/github/jakevdp/PythonDataScienceHandbook/blob/master/notebooks/04.15-Further-Resources.ipynb"><img align="left" src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open in Colab" title="Open and Execute in Google Colaboratory"></a>
+- **[plotly for R](https://plotly.com/r/)** — create interactive charts natively in R or convert existing ggplot2 figures.
+- **[leaflet](https://rstudio.github.io/leaflet/)** — interactive maps in R.
+- **[highcharter](https://jkunst.com/highcharter/)** — a wrapper for the Highcharts JavaScript library.
+
+## Learning Further
+
+- **[R for Data Science (2nd ed.)](https://r4ds.hadley.nz/)** by Hadley Wickham, Mine Çetinkaya-Rundel, and Garrett Grolemund covers the full tidyverse workflow including visualisation.
+- **[Fundamentals of Data Visualization](https://clauswilke.com/dataviz/)** by Claus Wilke — a language-agnostic guide to effective data visualisation, with all examples in R/ggplot2.

@@ -5,7 +5,7 @@ output: html_document
 
 # Customizing Ticks and Scales
 
-Matplotlib's tick locators and formatters have direct equivalents in R through the `scale_*` functions in `ggplot2` and the `scales` package.
+In `ggplot2`, tick positions and label formatting are controlled through the `scale_*` family of functions. The `scales` package extends this with convenient formatting helpers for common display formats such as percentages, currencies, and logarithmic labels.
 
 ```{r setup, message=FALSE, warning=FALSE}
 library(tidyverse)

@@ -5,7 +5,7 @@ output: html_document
 
 # Week 1 - Data handling
 
-In R, the `tidyverse` suite of packages (including `dplyr`, `tidyr`, and `readr`) provides powerful tools to handle datasets and apply basic operations on them. These packages are the R equivalents to Python's `pandas` and `numpy`.
+In R, the `tidyverse` suite of packages (including `dplyr`, `tidyr`, and `readr`) provides powerful tools to handle datasets and apply basic operations on them. The `tidyverse` is R's core toolkit for data science workflows.
 
 The `tidyverse` offers a consistent system for manipulating data - see the [official documentation](https://www.tidyverse.org/).
 

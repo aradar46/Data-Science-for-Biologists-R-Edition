@@ -31,7 +31,7 @@ ggplot(df, aes(x = x, y = y)) +
 
 ## Continuous Errors: Ribbons
 
-When visualizing errors for continuous functions, a "ribbon" (equivalent to Matplotlib's `fill_between`) is often more effective than individual error bars.
+When visualizing errors for continuous functions, a "ribbon" created with `geom_ribbon()` is often more effective than individual error bars, as it shows a shaded region of uncertainty around a trend line.
 
 ```{r}
 # Generate a smooth fit with uncertainty

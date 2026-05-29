@@ -7,7 +7,7 @@ output: html_document
 
 Visualization is one of the core strengths of the R language. While base R provides many plotting functions, the `tidyverse` ecosystem—and specifically the `ggplot2` package—has become the industry standard for creating publication-quality graphics.
 
-In this section, we adapt concepts from the "Python Data Science Handbook" to R. The "Grammar of Graphics" used by `ggplot2` allows us to describe and build complex visualizations by layering components.
+In this supplementary section, we explore the full range of `ggplot2`'s capabilities. The "Grammar of Graphics" on which `ggplot2` is built allows us to describe and compose complex visualizations by layering components.
 
 ```{r setup, message=FALSE, warning=FALSE}
 library(tidyverse)

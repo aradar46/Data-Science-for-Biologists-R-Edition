@@ -152,7 +152,7 @@ while (number < 10) {
 
 ### Reading and writing files
 
-We typically use `read_csv()` and `write_csv()` the `readr` package.
+We typically use `read_csv()` and `write_csv()` from the `readr` package.
 
 ```{r, eval=FALSE}
 library(readr)

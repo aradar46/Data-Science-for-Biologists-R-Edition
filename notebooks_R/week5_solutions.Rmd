@@ -16,7 +16,7 @@ library(lars) # For the diabetes dataset
 ```{r}
 # Load diabetes data
 data(diabetes)
-diabetes_df <- as_tibble(diabetes$x) %>%
+diabetes_df <- as_tibble(as.data.frame(unclass(diabetes$x))) %>%
   mutate(target = diabetes$y)
 
 glimpse(diabetes_df)

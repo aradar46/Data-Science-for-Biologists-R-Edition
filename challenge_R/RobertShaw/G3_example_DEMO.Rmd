@@ -25,7 +25,7 @@ filenames_name <- "Raw data & meta data.xlsx"
 # Note: This step assumes the metadata file exists.
 # We wrap it in a conditional or provide a template for students.
 if (file.exists(paste0(filenames_path, filenames_name))) {
-  df_names <- read_excel(paste0(filenames_path, filenames_name), sheet = 'Data for Python DEMO')
+  df_names <- read_excel(paste0(filenames_path, filenames_name), sheet = 'Data for R DEMO')
 } else {
   message("Metadata file not found. Please provide 'Raw data & meta data.xlsx'.")
   # Placeholder for demonstration

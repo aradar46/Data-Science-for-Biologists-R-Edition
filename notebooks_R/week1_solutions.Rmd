@@ -31,7 +31,7 @@ metabric_stats <- metabric %>%
   summarise(across(where(is.numeric), list(mean = mean, sd = sd), na.rm = TRUE))
 ```
 
-```{r}
+```{r, eval=FALSE}
 # Write summary statistics
 write_csv(metabric_stats, "metabric_summary.csv")
 write_tsv(metabric_stats, "metabric_summary.tsv")

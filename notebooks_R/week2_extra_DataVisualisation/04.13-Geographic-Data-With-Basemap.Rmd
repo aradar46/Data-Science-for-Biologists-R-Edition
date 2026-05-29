@@ -5,27 +5,25 @@ output: html_document
 
 # Geographic Data and Mapping
 
-Geographic visualization is a common task in data science. In R, the `sf` (Simple Features) package is the modern standard for handling spatial data, while `ggplot2` and `leaflet` are used for visualization.
+Geographic visualization is a common task in data science. In R, `ggplot2` combined with the `maps` package provides an easy way to visualize geographic data.
 
 ```{r setup, message=FALSE, warning=FALSE}
 library(tidyverse)
-library(sf)
 library(maps)
-library(leaflet)
 ```
 
 ## Static Maps with `ggplot2`
 
-`ggplot2` provides `geom_sf()` for plotting spatial objects.
+`ggplot2` provides `geom_polygon()` combined with `coord_quickmap()` for plotting spatial objects.
 
 ```{r}
 # Load world map data
-world <- st_as_sf(map('world', plot = FALSE, fill = TRUE))
+world <- map_data("world")
 
 # Plot world map
-ggplot(data = world) +
-  geom_sf(fill = "antiquewhite") +
-  coord_sf(expand = FALSE) +
+ggplot(data = world, aes(x = long, y = lat, group = group)) +
+  geom_polygon(fill = "antiquewhite", color = "gray") +
+  coord_quickmap() +
   theme_minimal()
 ```
 
@@ -41,24 +39,14 @@ cities <- tibble(
   lon = c(-0.1278, -74.0060, 139.6917)
 )
 
-ggplot(data = world) +
-  geom_sf() +
-  geom_point(data = cities, aes(x = lon, y = lat), color = "red", size = 3) +
+ggplot(data = world, aes(x = long, y = lat, group = group)) +
+  geom_polygon(fill = "antiquewhite", color = "gray") +
+  geom_point(data = cities, aes(x = lon, y = lat, group = NULL), color = "red", size = 3) +
+  coord_quickmap() +
   theme_bw()
-```
-
-## Interactive Maps with `leaflet`
-
-For web-based projects, `leaflet` provides highly interactive maps.
-
-```{r}
-leaflet(cities) %>%
-  addTiles() %>%
-  addMarkers(~lon, ~lat, popup = ~city)
 ```
 
 ## Summary
 
--   **Data Standard:** Use the `sf` package to handle spatial data.
--   **Static Maps:** Use `geom_sf()` in `ggplot2` for reproducible static figures.
--   **Interactive Maps:** Use `leaflet` for interactive, zoomable map widgets.
+-   **Data Standard:** Use the `maps` package to get boundary data.
+-   **Static Maps:** Use `geom_polygon()` and `coord_quickmap()` in `ggplot2` for reproducible static figures.
