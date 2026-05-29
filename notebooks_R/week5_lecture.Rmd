@@ -1,0 +1,140 @@
+---
+title: "Week 5 - An introduction to Machine Learning (PART 1)"
+output: html_document
+---
+
+# Week 5 - An introduction to Machine Learning (PART 1)
+
+### Agenda
+
+1. Motivation
+2. Aims
+3. Theoretical part
+4. Work with datasets
+
+## Motivation
+
+> Machine Learning is a toolkit of techniques that allow us to describe data and make predictions, while making fewer assumptions about the statistical properties of our data. In R, the `tidymodels` framework provides a modern, cohesive system for machine learning that follows `tidyverse` principles.
+
+## Aims
+
+#### This week
+
+- Theoretical lecture:
+  - Comparing ML with statistical models
+  - Types of problems where ML is helpful
+  - Stages of creating an ML model
+  - Introduction to the `tidymodels` framework in R
+- Recreate simple and multivariate regressions based on the METABRIC dataset.
+- Introduction to Decision Trees and Random Forests using the CPS Wages dataset.
+
+## Setup
+
+We will use the `tidymodels` suite, which includes packages like `rsample`, `parsnip`, `recipes`, and `workflows`.
+
+```{r setup, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(tidymodels)
+library(ranger)
+library(rpart)
+library(rpart.plot)
+library(vip)
+```
+
+## 1. Linear Regression with tidymodels
+
+We will predict survival time based on tumour size using the METABRIC dataset.
+
+### Load Data
+
+```{r}
+metabric <- read_csv("../data/metabric_clinical_and_expression_data.csv") %>%
+  drop_na()
+```
+
+### Visualisation
+
+```{r}
+ggplot(metabric, aes(x = Tumour_size, y = Survival_time, color = Cancer_type)) +
+  geom_point(alpha = 0.5) +
+  labs(title = "Survival time vs. Tumour size", x = "Tumour size (mm)", y = "Survival time (days)") +
+  theme_minimal()
+```
+
+### Modeling Workflow
+
+In `tidymodels`, we follow a structured workflow:
+
+1.  **Split** the data.
+2.  Define the **model specification** (engine and mode).
+3.  **Fit** the model.
+4.  **Evaluate** predictions.
+
+```{r}
+# 1. Split data
+set.seed(42)
+metabric_split <- initial_split(metabric, prop = 0.8)
+train_data <- training(metabric_split)
+test_data  <- testing(metabric_split)
+
+# 2. Model specification
+lm_spec <- linear_reg() %>%
+  set_engine("lm")
+
+# 3. Fit model
+lm_fit <- lm_spec %>%
+  fit(Survival_time ~ Tumour_size, data = train_data)
+
+# 4. Predict and Evaluate
+results <- test_data %>%
+  select(Survival_time, Tumour_size) %>%
+  bind_cols(predict(lm_fit, test_data))
+
+metrics(results, truth = Survival_time, estimate = .pred)
+```
+
+## 2. Decision Trees and Random Forest
+
+We will explore non-linear models using the CPS Wages dataset.
+
+```{r}
+# Loading CPS Wages data
+wages <- read_table("http://lib.stat.cmu.edu/datasets/CPS_85_Wages",
+                    skip = 27, col_names = FALSE) %>%
+  select(X1, X4, X6, X7) # Simplified selection for demo
+colnames(wages) <- c("EDUCATION", "EXPERIENCE", "WAGE", "AGE")
+```
+
+### Decision Tree
+
+```{r}
+tree_spec <- decision_tree() %>%
+  set_engine("rpart") %>%
+  set_mode("regression")
+
+tree_fit <- tree_spec %>%
+  fit(WAGE ~ EDUCATION + AGE, data = wages)
+
+# Visualize the tree
+rpart.plot(tree_fit$fit)
+```
+
+### Random Forest
+
+```{r}
+rf_spec <- rand_forest() %>%
+  set_engine("ranger", importance = "impurity") %>%
+  set_mode("regression")
+
+rf_fit <- rf_spec %>%
+  fit(WAGE ~ EDUCATION + AGE, data = wages)
+
+# Feature Importance
+vip(rf_fit)
+```
+
+## Exercises
+
+1.  Using `tidymodels`, fit a multivariate linear regression on the METABRIC dataset using `Tumour_size`, `ER_status`, and `Cancer_type` as predictors.
+2.  Use `recipes` to handle the one-hot encoding of categorical variables (`step_dummy`).
+3.  Compare the performance of a Linear Regression model vs. a Random Forest model on the `diabetes` dataset.

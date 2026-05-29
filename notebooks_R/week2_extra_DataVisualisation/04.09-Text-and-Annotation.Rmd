@@ -1,0 +1,55 @@
+---
+title: "Text and Annotation in R"
+output: html_document
+---
+
+# Text and Annotation
+
+Adding text and annotations can provide crucial context to a plot. In `ggplot2`, we use `annotate()`, `geom_text()`, and `geom_label()`.
+
+```{r setup, message=FALSE, warning=FALSE}
+library(tidyverse)
+```
+
+## Global Annotations
+
+`annotate()` allows you to add text, rectangles, or lines that aren't mapped to the data frame.
+
+```{r}
+ggplot(mpg, aes(x = displ, y = hwy)) +
+  geom_point(alpha = 0.5) +
+  annotate("text", x = 5, y = 40, label = "High Efficiency ->", color = "red", fontface = "bold") +
+  annotate("rect", xmin = 5, xmax = 7, ymin = 10, ymax = 20, alpha = 0.2, fill = "blue") +
+  theme_minimal()
+```
+
+## Data-Driven Text with `geom_text()`
+
+If you want to label specific points from your data, use `geom_text()`.
+
+```{r}
+# Label only the most efficient cars
+labels_df <- mpg %>% filter(hwy > 40)
+
+ggplot(mpg, aes(x = displ, y = hwy)) +
+  geom_point(alpha = 0.5) +
+  geom_text(data = labels_df, aes(label = model), vjust = -1, color = "darkblue") +
+  theme_bw()
+```
+
+## Labels with Backgrounds: `geom_label()`
+
+`geom_label()` is similar to `geom_text()` but draws a box behind the text for better readability.
+
+```{r}
+ggplot(mpg, aes(x = displ, y = hwy)) +
+  geom_point(alpha = 0.3) +
+  geom_label(data = labels_df, aes(label = model), fill = "white") +
+  theme_classic()
+```
+
+## Summary
+
+-   **Contextual Text:** Use `annotate("text", ...)` for arbitrary labels.
+-   **Data Labels:** Use `geom_text()` or `geom_label()` to map text to data points.
+-   **Highlighting:** Use `annotate("rect", ...)` or `geom_vline()` / `geom_hline()` to highlight specific regions or values.

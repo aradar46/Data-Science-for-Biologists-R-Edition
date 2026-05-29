@@ -1,0 +1,78 @@
+---
+title: "Density and Contour Plots in R"
+output: html_document
+---
+
+# Density and Contour Plots
+
+Sometimes it is useful to display three-dimensional data in two dimensions using contours or color-coded regions. In `ggplot2`, we can use `geom_contour()`, `geom_density_2d()`, and `geom_raster()`.
+
+```{r setup, message=FALSE, warning=FALSE}
+library(tidyverse)
+```
+
+## Visualizing a 3D Function
+
+We can visualize a function $z = f(x, y)$ by creating a grid of $x$ and $y$ values.
+
+```{r}
+# Define a function
+f <- function(x, y) {
+  sin(x)^10 + cos(10 + y * x) * cos(x)
+}
+
+# Create a grid
+grid <- expand_grid(
+  x = seq(0, 5, length.out = 100),
+  y = seq(0, 5, length.out = 100)
+) %>%
+  mutate(z = f(x, y))
+
+# Contour plot
+ggplot(grid, aes(x = x, y = y, z = z)) +
+  geom_contour(aes(color = after_stat(level))) +
+  scale_color_viridis_c() +
+  theme_minimal()
+```
+
+## Filled Contours and Rasters
+
+For a more continuous look, we can use `geom_raster()` (which is highly efficient for grids) or `geom_contour_filled()`.
+
+```{r}
+# Raster plot (Heatmap style)
+ggplot(grid, aes(x = x, y = y, fill = z)) +
+  geom_raster() +
+  scale_fill_viridis_c() +
+  theme_void()
+
+# Filled contours
+ggplot(grid, aes(x = x, y = y, z = z)) +
+  geom_contour_filled() +
+  labs(title = "Filled Contour Plot") +
+  theme_minimal()
+```
+
+## 2D Density Estimation
+
+If we have a collection of points, we can estimate their 2D density.
+
+```{r}
+# Generate points
+set.seed(42)
+df_points <- tibble(
+  x = rnorm(1000),
+  y = rnorm(1000)
+)
+
+ggplot(df_points, aes(x = x, y = y)) +
+  geom_point(alpha = 0.1) +
+  geom_density_2d(color = "red") +
+  theme_bw()
+```
+
+## Summary
+
+-   **Gridded Data:** Use `geom_contour()` or `geom_raster()`.
+-   **Point Data:** Use `geom_density_2d()` or `geom_density_2d_filled()`.
+-   **Color Scales:** `scale_fill_viridis_c()` is often a good choice for visibility.

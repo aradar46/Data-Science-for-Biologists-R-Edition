@@ -1,0 +1,215 @@
+---
+title: "Week 0 - Basic R concepts and functions"
+output: html_document
+---
+
+# Week 0 - Basic R concepts and functions
+
+### Aims
+
+- To recapitulate R's basic functionality (syntax, data types, structures, conditioning and I/O)
+- To learn and/or practice writing functions in R
+
+## Basic R
+
+### Printing
+
+In R, we use `print()` or `cat()` to output text to the console.
+
+```{r}
+print('Hello R!') # to print some text, enclose it between single quotation marks
+print("I'm here today!")    # or double quotation marks
+print(34)                   # print an integer
+print(2 + 4)                # print the result of an arithmetic operation
+# cat() is often better for combining text and numbers
+cat("The answer is", 42, "\n")
+```
+
+You can include a comment in R by prefixing some text with a `#` character. All text following the `#` will then be ignored by the interpreter.
+
+### Variables
+
+A variable can be assigned to a simple value or the outcome of a more complex expression. The `<-` operator is the standard assignment operator in R.
+
+```{r}
+x <- 3     # assignment of a simple value
+print(x)
+y <- x + 5 # assignment of a more complex expression
+print(y)
+i <- 12
+print(i)
+i <- i + 1 # incrementing
+print(i)
+```
+
+### Simple data types
+
+R has several main data types: numeric (includes integer and double), character (strings), logical (boolean), and complex.
+
+```{r}
+a <- 2           # numeric
+b <- 5.0         # numeric
+c <- 'word'      # character
+d <- 4 > 5       # logical (TRUE or FALSE)
+e <- NULL        # special value for "nothing"
+print(class(a))  # check the class of a variable
+```
+
+### Arithmetic operations
+
+```{r}
+3 + 2             # addition
+3 - 2             # subtraction
+3 * 2             # multiplication
+3 / 2             # division
+3 %/% 2           # integer division
+3 %% 2            # remainder (modulo)
+3 ^ 2             # exponent
+```
+
+### Data structures
+
+R has several core data structures to store the data types shown above:
+
+- Vectors (Atomic)
+- Lists
+- Matrices and Arrays
+- Data Frames and Tibbles
+- Factors
+
+##### Vectors
+
+A vector is an ordered collection of elements of the same type.
+
+```{r}
+a <- c('red', 'blue', 'green', "yellow") # c() combines elements
+length(a)                                # length
+d <- a[1]                                # access first element (R is 1-indexed!)
+e <- a[2:3]                              # access a slice
+f <- a[length(a)]                        # access last element
+a[2] <- "purple"                         # modify an element
+g <- c('re', 'bl', 'gr')                 # concatenation is done with c()
+'red' %in% a                             # check existence
+sort(a)                                  # sort
+```
+
+##### Lists
+
+Lists can contain elements of different types and lengths.
+
+```{r}
+a <- list(number = 1, text = "apple", flag = TRUE)
+a[[2]] # access by index
+a$text # access by name
+```
+
+### Working with strings
+
+In R, strings are character vectors. The `stringr` package (part of tidyverse) is highly recommended.
+
+```{r}
+library(stringr)
+a <- 'red'
+char <- substr(a, 1, 1)            # access substring
+b <- paste0('red', 'blue')         # concatenation
+c <- str_split('1, 2, three', ',') # split
+d <- str_c(c('1', '2', 'three'), collapse = ".") # join
+```
+
+### Conditions
+
+```{r}
+a <- 1; b <- 0
+if (a + b == 3) {
+    print('Three')
+} else if (a + b == 1) {
+    print('One')
+} else {
+    print('?')
+}
+```
+
+### Loops
+
+##### for
+
+```{r}
+colors <- c('red', 'blue', 'green')
+for (color in colors) {
+    print(color)
+}
+```
+
+##### while
+
+```{r}
+number <- 1
+while (number < 10) {
+    print(number)
+    number <- number + 1
+}
+```
+
+### Reading and writing files
+
+We typically use `read_csv()` and `write_csv()` the `readr` package.
+
+```{r, eval=FALSE}
+library(readr)
+# reading file
+metabric <- read_csv("../data/metabric_clinical_and_expression_data.csv")
+
+# writing to a file
+write_lines(c("I love programming in R!", "I love making scripts."), "programming.txt")
+```
+
+### Getting help
+
+```{r, eval=FALSE}
+help(length)
+?length
+```
+
+## Functions
+
+### Overview
+
+A function is a block of code that only runs when called. In R, we define functions using the `function` keyword.
+
+```{r}
+print_text <- function(input_text, verbose = FALSE) {
+    if (verbose) {
+        cat("Processing input...\n")
+    }
+    return(input_text)
+}
+
+result <- print_text("Hello world", verbose = TRUE)
+print(result)
+```
+
+## External functions and Packages
+
+### Loading Packages
+
+In R, we extend functionality by loading **packages** using the `library()` command.
+
+```{r}
+# Example
+# library(tidyverse)
+```
+
+Once a package is loaded, its functions are available. You can also call a function without loading the package using the `::` operator (e.g., `dplyr::filter()`).
+
+## Assignment
+
+1. Use the METABRIC dataset to answer the following questions:
+    - How many unique patients?
+    - How many older than 75 at diagnosis?
+    - What is the age range at diagnosis?
+
+2. Write a function that finds the most abundant amino acid in a protein sequence.
+
+3. Debug the provided function (Note: In R, arguments with defaults should follow those without).
+
+4. Find the most frequent word in "imagine_lyrics.txt" using R functions.

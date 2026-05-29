@@ -1,0 +1,82 @@
+---
+title: "Advanced Data Visualization with ggplot2"
+output: html_document
+---
+
+# Advanced Visualization in R
+
+While base R has useful plotting tools, `ggplot2` (part of the `tidyverse`) is the standard for sophisticated statistical visualization. It is the R equivalent to Python's `seaborn` and `plotnine`.
+
+```{r setup, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(ggpubr)
+library(GGally) # For pair plots
+```
+
+## Exploring Statistical Plots
+
+`ggplot2` provides high-level commands to create a variety of plot types useful for statistical data exploration.
+
+### Histograms and Densities
+
+```{r}
+# Using the built-in iris dataset
+ggplot(iris, aes(x = Sepal.Length, fill = Species)) +
+  geom_histogram(binwidth = 0.2, alpha = 0.5, position = "identity") +
+  theme_minimal()
+
+# Density plot
+ggplot(iris, aes(x = Sepal.Length, fill = Species)) +
+  geom_density(alpha = 0.3) +
+  theme_minimal()
+```
+
+### Pair Plots
+
+In R, the `GGally` package provides a powerful equivalent to Seaborn's `pairplot`.
+
+```{r, message=FALSE}
+ggpairs(iris, aes(color = Species, alpha = 0.5))
+```
+
+### Faceted Plots
+
+`ggplot2` makes faceting extremely simple. We'll look at the `tips` dataset (available in many R packages or via simulation).
+
+```{r}
+# Loading a similar dataset or using a simulated one for demo
+data(tips, package = "reshape2")
+
+ggplot(tips, aes(x = total_bill, y = tip)) +
+  geom_point(alpha = 0.5) +
+  facet_grid(sex ~ time) +
+  theme_bw()
+```
+
+### Violin Plots
+
+A great way to compare distributions across categories.
+
+```{r}
+ggplot(tips, aes(x = day, y = total_bill, fill = sex)) +
+  geom_violin(draw_quantiles = c(0.25, 0.5, 0.75)) +
+  theme_classic()
+```
+
+### Joint Distributions and Regression
+
+`geom_smooth()` automatically fits regression models to the data.
+
+```{r}
+ggplot(tips, aes(x = total_bill, y = tip)) +
+  geom_point(alpha = 0.5) +
+  geom_smooth(method = "lm") +
+  labs(title = "Joint Distribution with Regression Line") +
+  theme_minimal()
+```
+
+## Summary
+
+-   `ggplot2` provides a consistent "Grammar of Graphics" for building complex plots.
+-   `GGally` extends this for multivariate exploration (pair plots).
+-   Faceting and layering allow for deep data exploration with minimal code.

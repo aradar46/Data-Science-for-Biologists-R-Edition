@@ -1,0 +1,126 @@
+---
+title: "Week 0 - Basic R Solutions"
+output: html_document
+---
+
+## Assignment Solutions
+
+1. Use the METABRIC dataset to answer the following questions:
+    - How many unique patients?
+    - How many older than 75 at diagnosis?
+    - Earliest and oldest ages of diagnosis?
+    - Chemotherapy and Radiotherapy counts?
+    - Less than three mutations?
+
+```{r setup, message=FALSE, warning=FALSE}
+library(tidyverse)
+```
+
+```{r}
+# Load data
+metabric <- read_csv("../data/metabric_clinical_and_expression_data.csv")
+
+# For how many unique patients we have data available?
+n_unique <- n_distinct(metabric$Patient_ID)
+cat("The number of unique patients is", n_unique, "\n")
+
+# How many patients were older than 75 when diagnosed?
+older_75 <- metabric %>% filter(Age_at_diagnosis > 75) %>% nrow()
+cat("Number of patients older than 75:", older_75, "\n")
+
+# Earliest and oldest ages of diagnosis?
+age_range <- range(metabric$Age_at_diagnosis, na.rm = TRUE)
+cat("Age range:", age_range[1], "to", age_range[2], "\n")
+
+# Chemo and Radio?
+both_treatments <- metabric %>%
+  filter(Chemotherapy == "YES" & Radiotherapy == "YES") %>%
+  nrow()
+cat("Patients with both treatments:", both_treatments, "\n")
+
+# Less than three mutations?
+less_3_muts <- metabric %>% filter(Mutation_count < 3) %>% nrow()
+cat("Patients with < 3 mutations:", less_3_muts, "\n")
+```
+
+2. Protein sequence analysis function.
+
+```{r}
+proteins <- c(
+    "MEAGPSGAAAGAYLPPLQQ",
+    "VFQAPRRPGIGTVGKPIKLLANYFEVDIPK",
+    "IDVYHY",
+    "EVDIKPDKCPRRVNREVV",
+    "EYMVQHFKPQIFGDRKPVYDGKKNIYTVTALPIGNER"
+)
+
+find_abundant_aa <- function(protein) {
+    if (nchar(protein) < 10) {
+        warning("Protein is < 10 aa long")
+    }
+
+    # Split string into characters and create a table
+    aa_counts <- table(strsplit(protein, "")[[1]])
+
+    # Find max
+    most_abundant <- names(aa_counts)[which.max(aa_counts)]
+    return(most_abundant)
+}
+
+for (p in proteins) {
+    cat("Protein:", p, "\n")
+    cat("Most abundant AA:", find_abundant_aa(p), "\n\n")
+}
+```
+
+3. Debugging the capital city function.
+
+```{r}
+capital_cities <- list(
+    "Sweden" = "Stockholm",
+    "UK" = "London",
+    "USA" = "Washington DC"
+)
+
+# R version with correct argument order (defaults last)
+find_capital_city <- function(country, verbose = TRUE) {
+    if (country %in% names(capital_cities)) {
+        city <- capital_cities[[country]]
+        if (verbose) cat("Capital city located\n")
+    } else {
+        city <- "CAPITAL CITY NOT FOUND"
+    }
+    return(city)
+}
+
+countries <- c("USA", "UK", "Sweden", "Belgium")
+for (c in countries) {
+    print(find_capital_city(c))
+}
+```
+
+4. "Imagine" lyrics word frequency.
+
+```{r}
+find_most_frequent_word <- function(file_path, exclude_words = c()) {
+    # Read and clean text
+    lyrics <- read_lines(file_path) %>%
+        str_to_lower() %>%
+        str_replace_all("[[:punct:]]", "") %>%
+        str_split(" ") %>%
+        unlist() %>%
+        .[. != ""]
+
+    # Filter
+    if (length(exclude_words) > 0) {
+        lyrics <- lyrics[!(lyrics %in% str_to_lower(exclude_words))]
+    }
+
+    # Count
+    word_freq <- table(lyrics)
+    return(names(word_freq)[which.max(word_freq)])
+}
+
+cat("Most frequent word:", find_most_frequent_word("../data/imagine_lyrics.txt"), "\n")
+cat("Most frequent (filtered):", find_most_frequent_word("../data/imagine_lyrics.txt", c("the", "a", "and")), "\n")
+```

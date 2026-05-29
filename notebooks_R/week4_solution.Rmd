@@ -1,0 +1,65 @@
+---
+title: "Week 4 - Statistical Tests and Modelling Solutions"
+output: html_document
+---
+
+# Week 4 Solutions
+
+In this session, we provide solutions to the statistical analysis exercises using R.
+
+```{r setup, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(broom)
+library(ggpubr)
+```
+
+```{r}
+metabric <- read_csv("../data/metabric_clinical_and_expression_data.csv") %>%
+  drop_na()
+```
+
+## Exercise 1
+**Is there a significant difference between the tumour size of patients who received chemotherapy versus those who did not?**
+
+```{r}
+# Normality test
+shapiro.test(metabric$Tumour_size[1:1000]) # Likely non-normal
+
+# Visualization
+ggplot(metabric, aes(x = Chemotherapy, y = Tumour_size, fill = Chemotherapy)) +
+  geom_boxplot() +
+  geom_jitter(alpha = 0.2) +
+  theme_minimal()
+
+# Mann-Whitney U test (non-parametric)
+wilcox.test(Tumour_size ~ Chemotherapy, data = metabric)
+```
+
+## Exercise 2
+**Is there a correlation between tumour size and survival time? Does log10 transformation affect it?**
+
+```{r}
+# Correlation for raw data
+cor.test(metabric$Tumour_size, metabric$Survival_time, method = "spearman")
+
+# Correlation for log10 data
+cor.test(log10(metabric$Tumour_size), metabric$Survival_time, method = "spearman")
+
+# Visualization
+ggplot(metabric, aes(x = log10(Tumour_size), y = Survival_time)) +
+  geom_point(alpha = 0.5) +
+  geom_smooth(method = "lm", color = "red") +
+  theme_minimal()
+```
+
+## Exercise 3
+**Investigate if Chemotherapy and Radiotherapy treatments are independent.**
+
+```{r}
+# Contingency table
+cont_table <- table(metabric$Chemotherapy, metabric$Radiotherapy)
+print(cont_table)
+
+# Chi-square test
+chisq.test(cont_table)
+```

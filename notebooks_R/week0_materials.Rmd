@@ -1,0 +1,59 @@
+---
+title: "Week 0 - Materials and Introduction"
+output: html_document
+---
+
+# Introduction to Data Science with R
+
+### Course structure
+
+This is a data science course in **R** designed for participants with basic programming experience. The course will be run over **7 weeks** with the following structure.
+
+- **Monday lectures** will start with information about R syntax, the RStudio interface, and move through concepts such as how to write functions and handle data using the **tidyverse**, how to calculate summary information a data frame, and approaches to do plotting with **ggplot2**, modelling with **tidymodels**, and network analysis. Each lecture will conclude with an **assignment**.
+
+- **During the week (Tuesday-Thursday)**, participants are invited to review the materials and complete the assignment with the help of trainers.
+
+- In the **Friday recap** the trainers will provide a walk-through of the assignment and answer any questions.
+
+### Aims
+
+The course will cover concepts and strategies for working with data more effectively in R with the aim of:
+
+- Writing **reusable** code using R's **functions and packages**.
+- Acquiring a working knowledge of **key concepts** which are prerequisites for advanced programming, data visualisation, and machine learning.
+- Expanding knowledge of **R** with applications to life data sciences and bioinformatics (Bioconductor).
+
+### Audience
+
+This course is open to any AstraZeneca colleagues with some basic knowledge of R or a desire to learn. We are excited to have you!
+
+### Obtaining course materials
+
+The course materials are accessible via GitHub. We recommend using **RStudio** to follow along with the RMarkdown (`.Rmd`) files.
+
+1.  Download the repository content GitHub.
+2.  Open RStudio.
+3.  Open the `.Rmd` files corresponding to the week's lecture.
+
+### R and RStudio
+
+**R** is a language and environment for statistical computing and graphics. It is widely used in data science, bioinformatics, and academic research.
+
+**RStudio** is the premier Integrated Development Environment (IDE) for R, providing a user-friendly interface for coding, plotting, and package management.
+
+**RMarkdown** allows you to create reproducible documents that combine live code, results, and explanatory text.
+
+# Installations
+
+Before starting this course, you need to have **R** and **RStudio** installed.
+
+### Windows / macOS / Linux
+
+1.  **Install R:** Download and install the latest version of R [CRAN](https://cran.r-project.org/).
+2.  **Install RStudio:** Download and install RStudio Desktop [Posit](https://posit.co/download/rstudio-desktop/).
+3.  **Install the Tidyverse:** Open RStudio and run the following command in the console:
+    ```{r, eval=FALSE}
+    install.packages("tidyverse")
+    ```
+
+Please let us know via the Teams channel if you experience any issues with installations.

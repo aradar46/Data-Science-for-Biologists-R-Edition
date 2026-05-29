@@ -1,0 +1,80 @@
+---
+title: "Simple Scatter Plots in R"
+output: html_document
+---
+
+# Simple Scatter Plots
+
+Another commonly used plot type is the simple scatter plot, a close cousin of the line plot. Instead of points being joined by line segments, here the points are represented individually with a dot, circle, or other shape.
+
+```{r setup, message=FALSE, warning=FALSE}
+library(tidyverse)
+```
+
+## Scatter Plots with `geom_point()`
+
+In `ggplot2`, scatter plots are created using the `geom_point()` geometry.
+
+```{r}
+# Generate data
+df <- tibble(
+  x = seq(0, 10, length.out = 30),
+  y = sin(x)
+)
+
+# Basic scatter plot
+ggplot(df, aes(x = x, y = y)) +
+  geom_point()
+```
+
+## Customizing Markers
+
+We can change the shape and size of the points globally within `geom_point()`.
+
+```{r}
+ggplot(df, aes(x = x, y = y)) +
+  geom_point(shape = 17, size = 3, color = "darkred") +
+  theme_minimal()
+```
+
+R provides 25 built-in shapes, referenced by numeric codes (e.g., 0-25).
+
+## Mapping Aesthetics to Data
+
+The real power of scatter plots comes when we map visual properties to variables in our data.
+
+```{r}
+set.seed(0)
+random_data <- tibble(
+  x = rnorm(100),
+  y = rnorm(100),
+  colors = runif(100),
+  sizes = runif(100) * 10
+)
+
+ggplot(random_data, aes(x = x, y = y, color = colors, size = sizes)) +
+  geom_point(alpha = 0.5) +
+  scale_color_viridis_c() +
+  theme_minimal()
+```
+
+### Multidimensional Exploration with Iris
+
+Using the built-in `iris` dataset, we can visualize four dimensions simultaneously: sepal length, sepal width, petal width (size), and species (color).
+
+```{r}
+ggplot(iris, aes(x = Sepal.Length, y = Sepal.Width, color = Species, size = Petal.Width)) +
+  geom_point(alpha = 0.6) +
+  labs(
+    title = "Iris Data: Multiple Dimensions",
+    x = "Sepal Length",
+    y = "Sepal Width"
+  ) +
+  theme_bw()
+```
+
+## Summary
+
+-   **Geometries:** Use `geom_point()` for scatter plots.
+-   **Aesthetics:** Use `aes()` to map variables to `color`, `size`, and `shape`.
+-   **Customization:** Fixed values for color/size should go outside `aes()`, while variable mappings go inside.

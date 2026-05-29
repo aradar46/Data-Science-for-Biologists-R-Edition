@@ -1,0 +1,57 @@
+---
+title: "Themes and Settings in R"
+output: html_document
+---
+
+# Themes and Settings
+
+In R, global plot appearance is controlled by **Themes**. `ggplot2` comes with several built-in themes and allows you to create or modify your own.
+
+```{r setup, message=FALSE, warning=FALSE}
+library(tidyverse)
+```
+
+## Built-in Themes
+
+`ggplot2` provides several complete themes.
+
+```{r}
+p <- ggplot(mpg, aes(x = displ, y = hwy, color = drv)) + geom_point()
+
+# Try different themes
+p + theme_grey()    # The default
+p + theme_bw()      # Black and white
+p + theme_minimal() # Clean and modern
+p + theme_classic() # No gridlines
+```
+
+## Setting a Global Theme
+
+You can set a theme for all plots in a session using `theme_set()`.
+
+```{r}
+theme_set(theme_light())
+
+# All subsequent plots will use theme_light
+ggplot(mpg, aes(x = hwy)) + geom_histogram(bins = 30)
+```
+
+## Customizing Theme Elements
+
+The `theme()` function allows you to modify specific visual elements of a plot.
+
+```{r}
+ggplot(mpg, aes(x = displ, y = hwy)) +
+  geom_point() +
+  theme(
+    panel.grid.major = element_line(color = "red", linetype = "dotted"),
+    axis.title = element_text(size = 14, face = "bold"),
+    legend.position = "none"
+  )
+```
+
+## Summary
+
+-   **Complete Themes:** Start with `theme_minimal()`, `theme_bw()`, etc.
+-   **Global Settings:** Use `theme_set()` at the start of your script.
+-   **Fine-Grained Control:** Use `theme()` with `element_text()`, `element_line()`, and `element_rect()` to customize every aspect of the plot.

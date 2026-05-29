@@ -1,0 +1,124 @@
+---
+title: "Week 6 - An introduction to Machine Learning (PART 2)"
+output: html_document
+---
+
+# Week 6 - An introduction to Machine Learning (PART 2)
+
+## Motivation
+
+> In this session, we transition regression to **classification**. We will explore Decision Trees and Random Forests, focusing on model selection, cross-validation, and hyperparameter tuning using the `tidymodels` framework.
+
+## Setup
+
+```{r setup, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(tidymodels)
+library(ranger)
+library(vip) # For feature importance
+library(palmerpenguins) # For a classification example
+```
+
+## 1. Classification with Decision Trees
+
+We will use the `penguins` dataset to predict species.
+
+```{r}
+# Data Preparation
+data("penguins")
+penguins_clean <- penguins %>% drop_na()
+
+# Split
+set.seed(123)
+penguin_split <- initial_split(penguins_clean, prop = 0.7)
+penguin_train <- training(penguin_split)
+penguin_test  <- testing(penguin_split)
+
+# Model Spec
+tree_spec <- decision_tree() %>%
+  set_engine("rpart") %>%
+  set_mode("classification")
+
+# Fit
+tree_fit <- tree_spec %>%
+  fit(species ~ bill_length_mm + bill_depth_mm + flipper_length_mm, data = penguin_train)
+
+# Predict
+penguin_results <- penguin_test %>%
+  select(species) %>%
+  bind_cols(predict(tree_fit, penguin_test))
+
+# Metrics
+conf_mat(penguin_results, truth = species, estimate = .pred_class)
+accuracy(penguin_results, truth = species, estimate = .pred_class)
+```
+
+## 2. Random Forests and Feature Importance
+
+Random Forests improve performance by averaging multiple trees.
+
+```{r}
+rf_spec <- rand_forest() %>%
+  set_engine("ranger", importance = "impurity") %>%
+  set_mode("classification")
+
+rf_fit <- rf_spec %>%
+  fit(species ~ ., data = penguin_train)
+
+# Variable Importance
+vip(rf_fit)
+```
+
+## 3. Cross-Validation and Hyperparameter Tuning
+
+How do we pick the best parameters? We use `tune()` and grid search.
+
+```{r}
+# Tuneable spec
+tune_spec <- rand_forest(
+  mtry = tune(),
+  trees = 100,
+  min_n = tune()
+) %>%
+  set_engine("ranger") %>%
+  set_mode("classification")
+
+# Recipe
+penguin_recipe <- recipe(species ~ ., data = penguin_train) %>%
+  step_dummy(all_nominal_predictors())
+
+# Workflow
+penguin_wf <- workflow() %>%
+  add_recipe(penguin_recipe) %>%
+  add_model(tune_spec)
+
+# Tuning
+set.seed(456)
+penguin_folds <- vfold_cv(penguin_train, v = 5)
+
+tune_res <- tune_grid(
+  penguin_wf,
+  resamples = penguin_folds,
+  grid = 5
+)
+
+# Best Model
+best_tree <- tune_res %>% select_best(metric = "accuracy")
+final_wf <- finalize_workflow(penguin_wf, best_tree)
+final_fit <- final_wf %>% fit(data = penguin_train)
+
+# Test Performance
+final_fit %>%
+  predict(penguin_test) %>%
+  bind_cols(penguin_test) %>%
+  metrics(truth = species, estimate = .pred_class)
+```
+
+## Exercises
+
+Based on the Nature paper, "An interpretable mortality prediction model for COVID-19 patients":
+
+1.  Load the COVID-19 patient data.
+2.  Fit a `RandomForestClassifier` to predict mortality.
+3.  Evaluate the model using a confusion matrix and F1 score.
+4.  Plot the feature importances to identify the key biomarkers for mortality.

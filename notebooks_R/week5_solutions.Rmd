@@ -1,0 +1,136 @@
+---
+title: "Week 5 - Machine Learning Solutions (Part 1)"
+output: html_document
+---
+
+# Week 5 - Machine Learning Solutions (PART 1)
+
+In this session, we work with the `diabetes` dataset to predict disease progression. In R, we use the `tidymodels` framework.
+
+```{r setup, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(tidymodels)
+library(lars) # For the diabetes dataset
+```
+
+```{r}
+# Load diabetes data
+data(diabetes)
+diabetes_df <- as_tibble(diabetes$x) %>%
+  mutate(target = diabetes$y)
+
+glimpse(diabetes_df)
+```
+
+## Exercise 1
+
+Fit a multivariate linear regression using all samples to predict the response variable.
+
+```{r}
+# Model specification
+lm_spec <- linear_reg() %>%
+  set_engine("lm")
+
+# Fit model
+lm_fit <- lm_spec %>%
+  fit(target ~ ., data = diabetes_df)
+
+# Results
+tidy(lm_fit)
+glance(lm_fit)
+```
+
+## Exercise 2
+
+Perform a test-train split and evaluate the model.
+
+```{r}
+set.seed(42)
+diab_split <- initial_split(diabetes_df, prop = 0.7)
+diab_train <- training(diab_split)
+diab_test  <- testing(diab_split)
+
+# Fit on training set
+lm_fit_split <- lm_spec %>%
+  fit(target ~ ., data = diab_train)
+
+# Predict on test set
+results_test <- diab_test %>%
+  bind_cols(predict(lm_fit_split, diab_test))
+
+# Metrics
+metrics(results_test, truth = target, estimate = .pred)
+```
+
+## Exercise 3
+
+Try using a Random Forest model instead.
+
+```{r}
+library(ranger)
+
+rf_spec <- rand_forest(trees = 100) %>%
+  set_engine("ranger") %>%
+  set_mode("regression")
+
+rf_fit <- rf_spec %>%
+  fit(target ~ ., data = diab_train)
+
+# Evaluate
+results_rf <- diab_test %>%
+  bind_cols(predict(rf_fit, diab_test))
+
+metrics(results_rf, truth = target, estimate = .pred)
+```
+
+## Exercise 4: Hyperparameter Tuning
+
+Tweaking `mtry` and `min_n` using `tidymodels` grid search.
+
+```{r}
+# Tuneable specification
+rf_tune_spec <- rand_forest(
+  mtry = tune(),
+  trees = 100,
+  min_n = tune()
+) %>%
+  set_engine("ranger") %>%
+  set_mode("regression")
+
+# Cross-validation folds
+set.seed(123)
+diab_folds <- vfold_cv(diab_train, v = 5)
+
+# Tuning grid
+rf_grid <- grid_regular(
+  mtry(range = c(1, 10)),
+  min_n(range = c(2, 10)),
+  levels = 5
+)
+
+# Run tuning
+tune_results <- tune_grid(
+  rf_tune_spec,
+  target ~ .,
+  resamples = diab_folds,
+  grid = rf_grid
+)
+
+autoplot(tune_results)
+```
+
+```{r}
+# Best model
+best_rf <- tune_results %>%
+  select_best(metric = "rmse")
+
+final_rf <- finalize_model(rf_tune_spec, best_rf)
+final_fit <- final_rf %>%
+  fit(target ~ ., data = diab_train)
+
+# Final performance
+final_results <- diab_test %>%
+  bind_cols(predict(final_fit, diab_test))
+
+metrics(final_results, truth = target, estimate = .pred)
+```

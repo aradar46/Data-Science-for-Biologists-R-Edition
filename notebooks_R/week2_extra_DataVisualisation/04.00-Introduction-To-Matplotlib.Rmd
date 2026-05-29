@@ -1,0 +1,37 @@
+---
+title: "Introduction to R Visualization with ggplot2"
+output: html_document
+---
+
+# Introduction to Data Visualization in R
+
+Visualization is one of the core strengths of the R language. While base R provides many plotting functions, the `tidyverse` ecosystem—and specifically the `ggplot2` package—has become the industry standard for creating publication-quality graphics.
+
+In this section, we adapt concepts from the "Python Data Science Handbook" to R. The "Grammar of Graphics" used by `ggplot2` allows us to describe and build complex visualizations by layering components.
+
+```{r setup, message=FALSE, warning=FALSE}
+library(tidyverse)
+```
+
+### Core Concepts
+
+1.  **Aesthetics (aes):** Mapping data variables to visual properties (x, y, color, size).
+2.  **Geometries (geoms):** Defining the type of plot (points, lines, bars).
+3.  **Facets:** Splitting a plot into multiple subplots based on a factor.
+4.  **Themes:** Controlling the non-data visual elements (fonts, background).
+
+Throughout these supplementary notebooks, we will explore:
+-   Simple Line and Scatter Plots
+-   Histograms and Density Plots
+-   Customizing Legends and Colorbars
+-   Advanced Layouts and Annotations
+
+Let's begin with a simple example:
+
+```{r}
+# Mapping 'mpg' data: Engine displacement vs Highway miles per gallon
+ggplot(mpg, aes(x = displ, y = hwy, color = class)) +
+  geom_point() +
+  labs(title = "Fuel Efficiency vs Engine Size", x = "Engine Displacement (L)", y = "Highway MPG") +
+  theme_minimal()
+```

@@ -1,0 +1,158 @@
+---
+title: "Week 1 - Data handling with the Tidyverse"
+output: html_document
+---
+
+# Week 1 - Data handling
+
+In R, the `tidyverse` suite of packages (including `dplyr`, `tidyr`, and `readr`) provides powerful tools to handle datasets and apply basic operations on them. These packages are the R equivalents to Python's `pandas` and `numpy`.
+
+The `tidyverse` offers a consistent system for manipulating data - see the [official documentation](https://www.tidyverse.org/).
+
+### Aims
+
+- Gain familiarity with data handling using the `tidyverse`:
+    - Create, read, and write data.
+    - Select a subset of variables (columns).
+    - Filter rows based on their values.
+    - Sort datasets.
+    - Create new columns or modify existing ones.
+    - Summarise data.
+    - Handle missing data.
+    - Merge datasets.
+
+### Loading the Tidyverse
+
+We extend R's base functionality by loading the `tidyverse` library.
+
+```{r setup, message=FALSE}
+library(tidyverse)
+```
+
+### Reading datasets
+
+We are going to use the METABRIC dataset `metabric_clinical_and_expression_data.csv` containing information about breast cancer patients.
+
+To read a CSV file, we use the `read_csv()` function from the `readr` package:
+
+```{r}
+metabric <- read_csv("../data/metabric_clinical_and_expression_data.csv")
+```
+
+```{r}
+metabric
+```
+
+Generally, rows in a `tibble` (the tidyverse version of a data frame) are the **observations** (patients) whereas columns are the observed **variables** (Cohort, Age_at_diagnosis, etc.).
+
+### Exploring data
+
+The `tibble` is a 2-dimensional table where columns can contain different data types (e.g., character, integer, double, logical).
+
+Using the `glimpse()` function, we can view basic information about our data:
+
+```{r}
+glimpse(metabric)
+```
+
+We can access dimensions using `dim()` and column names using `colnames()`:
+
+```{r}
+dim(metabric)
+colnames(metabric)
+```
+
+The `summary()` function computes summary statistics for all columns:
+
+```{r}
+summary(metabric)
+```
+
+To access a specific column as a vector, use the `$` operator:
+
+```{r}
+mean(metabric$Survival_time, na.rm = TRUE)
+```
+
+### Selecting columns and rows
+
+In the `tidyverse`, we use `select()` to pick columns and `slice()` or `filter()` to pick rows.
+
+```{r}
+# Select the first three rows
+metabric %>% slice(1:3)
+
+# Select specific columns
+metabric %>% select(Cohort, Chemotherapy) %>% head(3)
+```
+
+### Filtering rows
+
+You can choose rows that match criteria using `filter()`.
+
+```{r}
+# Filter for patients who died of the disease
+metabric %>% filter(Vital_status == "Died of Disease") %>% head()
+
+# Multiple conditions
+metabric %>%
+  filter(Vital_status == "Died of Disease", Age_at_diagnosis > 70) %>%
+  head()
+```
+
+### Defining new columns
+
+Use `mutate()` to create or transform columns.
+
+```{r}
+metabric <- metabric %>%
+  mutate(Age_today = Age_at_diagnosis + Survival_time/365)
+
+metabric %>% select(Age_at_diagnosis, Survival_time, Age_today) %>% head()
+```
+
+### Sort data
+
+Use `arrange()` to sort. Wrap a column in `desc()` for descending order.
+
+```{r}
+metabric %>% arrange(desc(Tumour_size)) %>% head()
+```
+
+### Missing data
+
+R uses `NA` to represent missing data.
+
+```{r}
+# Count NAs per column
+colSums(is.na(metabric))
+
+# Drop rows with any NAs
+metabric_clean <- metabric %>% drop_na()
+```
+
+### Grouping and Summarising
+
+```{r}
+metabric %>%
+  group_by(Cohort) %>%
+  summarise(mean_survival = mean(Survival_time, na.rm = TRUE))
+```
+
+### Merge datasets
+
+Use `bind_rows()` to concatenate and `left_join()` or `inner_join()` to merge based on keys.
+
+```{r}
+df1 <- tibble(Patient_ID = c("A", "B"), Val1 = c(1, 2))
+df2 <- tibble(Patient_ID = c("A", "B"), Val2 = c(3, 4))
+
+left_join(df1, df2, by = "Patient_ID")
+```
+
+## Assignment
+
+1.  Read `metabric_clinical_and_expression_data.csv` and export its summary statistics to a CSV and Excel file.
+2.  Calculate the mean tumour size of patients grouped by vital status and tumour stage.
+3.  Identify patient IDs with missing tumour size data.
+4.  (Bonus) Try these operations on your own dataset.

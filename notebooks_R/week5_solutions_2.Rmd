@@ -1,0 +1,117 @@
+---
+title: "Week 5 - Machine Learning Solutions (Part 1 - Continued)"
+output: html_document
+---
+
+# Week 5 - Machine Learning Solutions (PART 1 - Continued)
+
+In this session, we continue with solutions for the `diabetes` dataset, exploring both linear models and Random Forests using the `tidymodels` framework.
+
+```{r setup, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(tidymodels)
+library(lars)
+library(ranger)
+library(vip)
+```
+
+```{r}
+# Load diabetes data
+data(diabetes)
+diabetes_df <- as_tibble(diabetes$x) %>%
+  mutate(target = diabetes$y)
+```
+
+## Exercise 1 & 2: Multivariate Linear Regression
+
+```{r}
+set.seed(42)
+diab_split <- initial_split(diabetes_df, prop = 0.7)
+diab_train <- training(diab_split)
+diab_test  <- testing(diab_split)
+
+# Spec
+lm_spec <- linear_reg() %>% set_engine("lm")
+
+# Fit
+lm_fit <- lm_spec %>% fit(target ~ ., data = diab_train)
+
+# Evaluate
+lm_results <- diab_test %>%
+  bind_cols(predict(lm_fit, diab_test))
+
+metrics(lm_results, truth = target, estimate = .pred)
+```
+
+## Exercise 3: Random Forest
+
+```{r}
+# Use a subset of predictors as suggested
+rf_spec <- rand_forest() %>%
+  set_engine("ranger", importance = "impurity") %>%
+  set_mode("regression")
+
+rf_fit <- rf_spec %>%
+  fit(target ~ age + bmi + bp, data = diab_train)
+
+# Evaluate
+rf_results <- diab_test %>%
+  bind_cols(predict(rf_fit, diab_test))
+
+metrics(rf_results, truth = target, estimate = .pred)
+```
+
+## Exercise 4: Hyperparameter Tuning
+
+We will tune `mtry` and `min_n` using a grid search.
+
+```{r}
+# Tuneable spec
+rf_tune_spec <- rand_forest(
+  mtry = tune(),
+  trees = 100,
+  min_n = tune()
+) %>%
+  set_engine("ranger") %>%
+  set_mode("regression")
+
+# Workflow
+rf_wf <- workflow() %>%
+  add_formula(target ~ .) %>%
+  add_model(rf_tune_spec)
+
+# Folds
+set.seed(123)
+diab_folds <- vfold_cv(diab_train, v = 5)
+
+# Grid
+rf_grid <- grid_regular(
+  mtry(range = c(1, 10)),
+  min_n(range = c(2, 10)),
+  levels = 5
+)
+
+# Tuning
+tune_results <- tune_grid(
+  rf_wf,
+  resamples = diab_folds,
+  grid = rf_grid
+)
+
+# Visualization
+autoplot(tune_results)
+```
+
+### Final Model Selection
+
+```{r}
+best_params <- tune_results %>% select_best(metric = "rmse")
+final_rf <- finalize_workflow(rf_wf, best_params)
+final_fit <- fit(final_rf, diab_train)
+
+# Performance on test set
+final_fit %>%
+  predict(diab_test) %>%
+  bind_cols(diab_test) %>%
+  metrics(truth = target, estimate = .pred)
+```

@@ -1,0 +1,55 @@
+---
+title: "Visualizing Errors in R"
+output: html_document
+---
+
+# Visualizing Errors
+
+For any scientific measurement, accurate visualization of error is just as important as the visualization of the data itself. In `ggplot2`, we have several geoms to represent uncertainty.
+
+```{r setup, message=FALSE, warning=FALSE}
+library(tidyverse)
+```
+
+## Basic Errorbars
+
+We can add error bars to discrete points using `geom_errorbar()`.
+
+```{r}
+# Generate some data with errors
+x <- seq(0, 10, length.out = 30)
+dy <- 0.8
+y <- sin(x) + dy * rnorm(30)
+
+df <- tibble(x = x, y = y, dy = dy)
+
+ggplot(df, aes(x = x, y = y)) +
+  geom_point() +
+  geom_errorbar(aes(ymin = y - dy, ymax = y + dy), width = 0.2) +
+  theme_minimal()
+```
+
+## Continuous Errors: Ribbons
+
+When visualizing errors for continuous functions, a "ribbon" (equivalent to Matplotlib's `fill_between`) is often more effective than individual error bars.
+
+```{r}
+# Generate a smooth fit with uncertainty
+df_fit <- tibble(
+  x = seq(0, 10, length.out = 100),
+  y = sin(x),
+  error = 0.2
+)
+
+ggplot(df_fit, aes(x = x, y = y)) +
+  geom_line(color = "red") +
+  geom_ribbon(aes(ymin = y - error, ymax = y + error), fill = "red", alpha = 0.2) +
+  labs(title = "Line Plot with Error Ribbon") +
+  theme_bw()
+```
+
+## Summary
+
+-   **Discrete Points:** Use `geom_errorbar()` or `geom_pointrange()`.
+-   **Continuous Functions:** Use `geom_ribbon()` to show a shaded region of uncertainty.
+-   **Aesthetics:** Always map `ymin` and `ymax` to your upper and lower bounds.

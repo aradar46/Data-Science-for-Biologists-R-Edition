@@ -1,0 +1,56 @@
+---
+title: "Customizing Ticks and Scales in R"
+output: html_document
+---
+
+# Customizing Ticks and Scales
+
+Matplotlib's tick locators and formatters have direct equivalents in R through the `scale_*` functions in `ggplot2` and the `scales` package.
+
+```{r setup, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(scales) # Essential for tick formatting
+```
+
+## Basic Tick Customization
+
+We can control where ticks appear using the `breaks` argument and how they are labeled using `labels`.
+
+```{r}
+ggplot(mpg, aes(x = displ, y = hwy)) +
+  geom_point() +
+  scale_x_continuous(breaks = seq(1, 7, by = 1)) +
+  scale_y_continuous(breaks = c(10, 25, 40), labels = c("Low", "Medium", "High")) +
+  theme_minimal()
+```
+
+## Logarithmic Scales
+
+Log scales are common in bioinformatics and data science. In `ggplot2`, we use `scale_*_log10()`.
+
+```{r}
+ggplot(msleep, aes(x = bodywt, y = brainwt)) +
+  geom_point() +
+  scale_x_log10(labels = label_comma()) +
+  scale_y_log10(labels = label_log()) +
+  theme_bw()
+```
+
+## Hiding Ticks and Labels
+
+To remove ticks or labels, we use `theme()`.
+
+```{r}
+ggplot(mpg, aes(x = class)) +
+  geom_bar() +
+  theme(
+    axis.text.x = element_blank(), # Hide x-axis text
+    axis.ticks.x = element_blank() # Hide x-axis ticks
+  )
+```
+
+## Summary
+
+-   **Manual Control:** Use `breaks` and `labels` inside `scale_x_continuous()` or similar.
+-   **Special Formats:** Use the `scales` package (e.g., `label_percent()`, `label_dollar()`, `label_log()`) for consistent formatting.
+-   **Cosmetic Control:** Use `theme()` to adjust the appearance or visibility of ticks and text.

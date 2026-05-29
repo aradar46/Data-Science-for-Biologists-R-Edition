@@ -1,0 +1,142 @@
+---
+title: "Week 4 - Statistical Tests and Modelling"
+output: html_document
+---
+
+# Statistical Analysis in R
+
+In this session, we will explore how to carry out statistical tests and modelling in R. R is a language built for statistics, so many of these tools are included in the base installation (`stats` package), and we will use the `tidyverse` for data handling and `broom` for tidying model outputs.
+
+```{r setup, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(broom)
+library(ggpubr) # for easy statistical annotations on plots
+```
+
+# Data
+We will use the METABRIC dataset. Many statistical functions in R handle missing data using the `na.rm = TRUE` argument, but for modelling, we will use a version of the dataset with NAs removed.
+
+```{r}
+metabric <- read_csv("../data/metabric_clinical_and_expression_data.csv") %>%
+  drop_na()
+
+summary(metabric)
+```
+
+# Statistical tests
+
+## Tests for normality
+Before choosing a test (e.g., t-test vs Mann-Whitney), we often check for normality. We can use the **Shapiro-Wilk test** or the **Kolmogorov-Smirnov test**.
+
+```{r}
+ggplot(metabric, aes(x = Age_at_diagnosis)) +
+  geom_histogram(bins = 30, fill = "steelblue", color = "white") +
+  theme_minimal()
+
+# Shapiro-Wilk test (note: usually limited to sample sizes < 5000)
+shapiro.test(metabric$Age_at_diagnosis[1:1000])
+```
+
+The low p-value suggests the data is non-normal.
+
+## Correlation
+To test the relationship between two continuous variables:
+
+```{r}
+# Pearson correlation (for normal data)
+cor.test(metabric$ESR1, metabric$GATA3, method = "pearson")
+
+# Spearman rank correlation (for non-normal data)
+cor.test(metabric$Tumour_size, metabric$Mutation_count, method = "spearman")
+```
+
+## T-test and Mann-Whitney U test
+To compare means between two groups (e.g., ER status):
+
+```{r}
+# T-test (parametric)
+t.test(Age_at_diagnosis ~ ER_status, data = metabric)
+
+# Wilcoxon / Mann-Whitney U test (non-parametric)
+wilcox.test(Survival_time ~ ER_status, data = metabric)
+```
+
+## ANOVA and Kruskal-Wallis
+To compare >2 groups:
+
+```{r}
+# ANOVA
+res_aov <- aov(Survival_time ~ Cancer_type, data = metabric)
+summary(res_aov)
+
+# Kruskal-Wallis (non-parametric)
+kruskal.test(Survival_time ~ Cancer_type, data = metabric)
+```
+
+## Chi-square test
+For categorical variables:
+
+```{r}
+# Create contingency table
+cont_table <- table(metabric$ER_status, metabric$PR_status)
+cont_table
+
+# Chi-square test
+chisq.test(cont_table)
+```
+
+# Data Transformation
+Transforming skewed data (like tumour size) can make it more suitable for modelling.
+
+```{r}
+metabric <- metabric %>%
+  mutate(
+    Tumour_size_log10 = log10(Tumour_size),
+    Tumour_size_sqrt  = sqrt(Tumour_size)
+  )
+
+# Visualizing transformations
+metabric %>%
+  select(Tumour_size, Tumour_size_log10, Tumour_size_sqrt) %>%
+  pivot_longer(everything(), names_to = "Transformation", values_to = "Value") %>%
+  ggplot(aes(x = Value)) +
+  geom_histogram(bins = 30) +
+  facet_wrap(~Transformation, scales = "free") +
+  theme_bw()
+```
+
+# Modelling
+
+## Simple Linear Regression
+Predicting survival time based on tumour size.
+
+```{r}
+# Fit model
+simple_model <- lm(Survival_time ~ Tumour_size, data = metabric)
+
+# Display results
+summary(simple_model)
+
+# Use broom to get a tidy table
+tidy(simple_model)
+glance(simple_model)
+```
+
+## Multivariate Linear Regression
+Considering multiple predictors simultaneously.
+
+```{r}
+complex_model <- lm(Survival_time ~ Tumour_size + Tumour_stage + Cancer_type + ER_status, data = metabric)
+summary(complex_model)
+```
+
+# Exercises
+
+## Exercise 1
+Is there a significant difference between the tumour size of patients who received chemotherapy versus those who did not? Visualize and test.
+
+## Exercise 2
+Test the correlation between tumour size and survival time. Compare the correlation coefficient for raw vs log10-transformed data.
+
+## Exercise 3
+Investigate if Chemotherapy and Radiotherapy treatments are independent using a Chi-square test.

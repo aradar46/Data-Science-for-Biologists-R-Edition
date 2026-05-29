@@ -1,0 +1,23 @@
+---
+title: "week0_challenge.ipynb"
+output: html_document
+---
+
+# Week 0 - Course challenge
+
+The aim of this optional activity is to apply the learnings the course to a dataset of research interest to the participant or alternatively one of the datasets provided below
+
+During the rest of the course, individual partipants or participants working as part of small teams will analyse, visualise and apply modelling concepts to the selected dataset. Partipants are invited to apply the concepts learned throughout the course and developed them through further using the selected dataset.
+
+Towards the end of the course (week 7), partipants will be asked to share a short summary of their work with the tutors and those interested will be invited to present their work to the rest of the class
+
+The two example datasets were provided by Guillaume Desachy AZ who took them the study [Ternès et al. 2016](https://onlinelibrary.wiley.com/doi/10.1002/bimj.201500234), which aims at studying gene expression 614 breast cancer patients treated with adjuvant chemotherapy. The datasets are:
+
+- `clinical.csv`: this is survival data a breast cancer control trial where the variables are:
+    - Treatment: coded as 0 (Standard of care) and 1 (Standard of care + Chemotherapy)
+    - Status: coded as 0 (censoring) and 1 (event)
+    - Time: time of event or censoring
+
+- `omics.csv`: this is RNA microarray data, centered and scaled, for 1691 gene probes
+
+Alternatively, participants can also use the METABRIC dataset presented during the course

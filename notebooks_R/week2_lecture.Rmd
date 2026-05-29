@@ -1,0 +1,441 @@
+---
+title: "week2_lecture.ipynb"
+output: html_document
+---
+
+# Week 2 - Data visualisation
+
+## Modules required
+
+To visualize data in Python, we will be using an external module called [plotnine](https://plotnine.readthedocs.io/en/stable/). To install plotnine, run `pip install plotnine --user` just like you installed pandas and/or numpy on week 2
+
+When importing plotnine, we will alias it as `p9`. We also need to library(tidymodels) and pandas, using the same aliases as before.
+
+```{r}
+library(ggplot2)
+library(tidymodels)
+library(tidyverse)
+```
+
+# Basic visualization
+With plotnine, you can build a plot using only 2 lines of code:
+
+1. a new `ggplot()` object: this creates a plot object, and holds the details of which variables will be displayed on which axes a.k.a. aesthetics -- `aes()` in short
+2. a geom e.g. `geom_point()`, `geom_line()` ...: this specifies the kind of plot that will be created
+
+And that's it! This structure is called the grammar of graphics, and it is used by other plotting libraries in other languages, such as ggplot in R.
+
+## Input data
+To keep things simple, we will use an artificial dataset to start with. We can make this with pandas, as covered in the previous session:
+
+```{r}
+example = tibble([
+    {"City":"Manchester", "Year":1980, "Rainfall":200},
+    {"City":"Manchester", "Year":1990, "Rainfall":190},
+    {"City":"Manchester", "Year":2000, "Rainfall":160},
+    {"City":"Manchester", "Year":2010, "Rainfall":170},
+    {"City":"Manchester", "Year":2020, "Rainfall":140},
+    {"City":"London", "Year":1980, "Rainfall":100},
+    {"City":"London", "Year":1990, "Rainfall":90},
+    {"City":"London", "Year":2000, "Rainfall":60},
+    {"City":"London", "Year":2010, "Rainfall":70},
+    {"City":"London", "Year":2020, "Rainfall":80}
+])
+
+example
+```
+
+## Scatter plot
+The first plot we will create is a scatter plot, which uses the `geom_point()` geom. The important points to note in the code below are:
+
+- `ggplot()`, `aes()` and `geom_point()` all come the plotnine module, so they need to have the `` prefix
+- the first argument to `ggplot()` is always the dataframe containing the data to be plotted
+- the second argument to `ggplot()` is always the `aes()` object, which contains the variables to be used for the x axis, y axis, plot fill and plot colour. These should always be specified in that order.
+- the `geom_point()` argument is preceded by a `+` because it is being added to the plot object created by the `ggplot()` function
+- I have separated the commands across multiple lines to make it easier to read. When doing this, the whole chunk of code needs to be encapsulated in brackets
+
+```{r}
+(
+# create the plot object, and specify which variables should be placed on the x & y axes, and which should be used to fill and colour the plot
+ggplot(example, aes("Year", "Rainfall", colour = "City"))
+    # specify a scatter plot
+    + geom_point()
+)
+
+#ggplot
+#https://plotnine.readthedocs.io/en/stable/
+```
+
+## Line plot
+To create a line plot, we can use the same `ggplot()` call as we used for the scatter plot above, and this will keep the same variables for the *x*, *y*, *fill* and *colour*. The only thing that needs to change about the code is the **geom**. In this case, we will use `geom_line()`:
+
+```{r}
+(
+# the ggplot call is exactly the same as the scatter plot
+ggplot(example, aes("Year", "Rainfall", colour="City"))
+    # specify a line plot
+    + geom_line()
+)
+```
+
+```{r}
+plotnine.data mtcars
+plotnine ggplot, aes, geom_point, geom_smooth, facet_wrap
+# coloful scatter plot
+( ggplot(mtcars, aes('wt', 'mpg', color='factor(cyl)'))
+    + geom_point()
+    + geom_smooth(method='lm')
+)
+```
+
+## Bar chart
+To create a bar chart, we again only need to change the **geom**. In this case, we will use `geom_col()`:
+
+```{r}
+plotnine geom_col
+(
+# the ggplot call is exactly the same as the scatter plot
+ggplot(example, aes("Year", "Rainfall", fill="City", colour="City"))
+    # specify a bar chart
+    + geom_col()
+)
+```
+
+By default `geom_col()` stacks the bars for the same x axis variable on top of each other, but we can place them next to each other by using the `position` argument:
+
+```{r}
+(
+# the ggplot call is exactly the same as the scatter plot
+ggplot(example, aes("Year", "Rainfall", fill="City", colour="City"))
+    # specify a bar chart
+    + geom_col(position="dodge")
+)
+```
+
+## Box plot
+To create a box plot that visualizes the rainfall for the two cities, we need to use a different **geom** and change the x axis argument. In this case, we will use `geom_box()` and replace Year with City in the `aes()` call:
+
+```{r}
+(
+# the ggplot call is exactly the same as the scatter plot
+ggplot(example, aes("City", "Rainfall", fill="City", colour="City"))
+    # specify a box plot
+    + geom_boxplot()
+)
+```
+
+## Histograms
+Histograms can be very useful to visualize the distribution of a variable. To generate a histogram, we use `geom_histogram`. An important difference between this plot and the previous plots is that for histograms, we only specify the x axis variable within the `aes()` object, and we leave out the y axis variable:
+
+```{r}
+(
+# the aes object contains only the variable that will be plotted on the x axis i.e. the one for which we want to generate a distribution
+ggplot(example, aes("Rainfall", fill="City"))
+    # specify a histogram
+    + geom_histogram(binwidth=33)
+)
+```
+
+# Advanced visualization
+
+## Input data
+To create some more advanced plots, we will use a more complex dataset: the clinical and expression data the metabric project, as used in the previous sessions. First we will read the data in as a pandas dataframe, using `dropna()` to remove any rows with missing data, and then print out the column names and the data types that they hold by calling the `dtypes` attribute.
+
+```{r}
+metabric = read_csv("../data/metabric_clinical_and_expression_data.csv").dropna()
+metabric.dtypes
+
+```
+
+## Layered plots
+As shown in the last section, a variety of simple plots can be generated by changing just the **geom**. However, we can construct more complex plots by layering different geoms on top of each other. This is particularly useful when we want to highlight a broad pattern in a noisy dataset: we can use one layer to display a line to visualize a model fit to the data, and another layer to show the raw data in the background. There are two things worth noting here:
+1. By passing the `colour` and `size` arguments to `geom_point()` we can specify the colour and size of the points
+2. We are using the `stat_smooth()` layer to plot a line of model fit on top of the raw data
+
+```{r}
+(
+ggplot(metabric, aes("Age_at_diagnosis", "Tumour_size"))
++ geom_point(colour='blue', size=.7)
++ geom_smooth(method='lm', color='red')
+)
+```
+
+```{r}
+(
+ggplot(metabric, aes("Age_at_diagnosis", "Tumour_size"))
+ + geom_point(colour="grey", size=0.5)
+ + stat_smooth(method="lm")
+)
+```
+
+## Faceted plots
+When a large dataset contains a discrete variable, it can be useful to generate separate plots for each value of the discrete variable, so that we can tease apart patterns that might only be present in a subset of the data. For example, patients in the metabric dataset are each assigned a vital status, but each vital status might have a different tumour size distribution. In plotnine, separate plots can be generated by creating a **faceted** plot, where each facet represents a different subset of the data. To do this, we add the `facet_wrap()` parameter to the plot. The arguments that we pass to `facet_wrap()` are very important:
+1. The first argument must always be the variable that we want to generate separate plots for, and we must always add a `~` before it
+2. We can use the `scales` argument to make the range of the x axis, y axis, or both axes independent of each other. The default is to use the same axis ranges for all facets, but when there is wide variation in a variable it can be useful to make them independent. In this case there are different numbers of patients in the different vital status classes, so specifying independent y axis ranges allows us to see their distributions more clearly
+3. We can use the `ncol` argument to specify the number of columns for the plot. By default the plots will be placed side-by-side until there is no more horizontal space, but we can place them on top of each other by specifying one column
+
+```{r}
+(
+ggplot(metabric, aes("Tumour_size"))
+ + geom_histogram()
+ + facet_wrap("~Vital_status", scales="free_x", ncol=1)
+)
+```
+
+## Heat maps
+When we want to explore the relationship between 2 discrete variables and a continuous variable, a heatmap can be very useful. We use `geom_tile()` to generate a different block for each combination of the discrete variables, and use the `fill` argument in the `aes()` object to specify which continuous variable to use for colouring the heatmap. It is worth noting in the example below that we can filter the dataset within the `ggplot()` call:
+
+```{r}
+# we can see the histograms above that there are a few very large tumours, so we will filter these out as we pass the data into the plot
+(
+ggplot(metabric[metabric["Tumour_size"]<100], aes("Vital_status", "Cancer_type", fill="Tumour_size"))
+ + geom_tile(aes(width=0.95, height=0.95))
+)
+```
+
+## Nested plots
+In complex datasets there may be a relationship between two variables that differs according to the value of a third variable. To visualize this, we can plot one variable on the x axis, another variable on the y axis, and use the `fill` parameter in the `aes()` object to split the x axis by a third variable. For example, we can compare the mutation count between different vital statuses, each subdivided by cancer type:
+
+```{r}
+(
+ggplot(metabric, aes("Vital_status", "Tumour_size", fill="Cancer_type"))
+    + geom_boxplot()
+)
+```
+
+## Plot formatting
+We often want to make specific changes to the format of our plots, and plotnine offers enormous flexibility for this. In the nested plot above, we may want to add a title, remove the underscores in the axes and legend titles, and change the order of the vital statuses. We can make these changes by specifying the following objects:
+- `ggtitle`: add a title to the plot
+- `xlab`: specify the x axis label
+- `ylab`: specify the y axis label
+- `scale_fill_discrete`: control the name, order or colours of the variable used to fill the plot
+- `scale_x_discrete`: control the name, order or colours of the variable on the x axis. By setting the `limits` parameter to a list, we can specify the order of the vital statuses
+
+```{r}
+(
+ggplot(metabric, aes(x="Vital_status", y="Mutation_count", fill="Cancer_type"))
+    + geom_boxplot()
+    + ggtitle("Metabric breast cancer dataset")
+    + ylab("Mutation count")
+    + xlab("Vital status")
+    + scale_fill_discrete(name = "Cancer type")
+    + scale_x_discrete(limits=["Living", "Died of Disease", "Died of Other Causes"])
+)
+```
+
+## Themes
+In any plot generated by plotnine, many cosmetic details are controlled by the **theme**, including the font, background colour, line thicknesses etc. plotnine comes with a number of pre-defined themes, which allow us to make dramatic changes to how a plot looks by adding just one more line to our existing plotting code. Let's go back to the plot of age at diagnosis versus tumour size, but this time colour the points by vital status:
+
+```{r}
+(
+ggplot(metabric, aes("Age_at_diagnosis", "Tumour_size"))
+ + geom_point(aes(colour="Vital_status"))
+ + stat_smooth()
+)
+```
+
+By using `theme_minimal()` we can remove the grey background and axis tickmarks, and make the minor gridlines much fainter:
+
+```{r}
+(
+ggplot(metabric, aes("Age_at_diagnosis", "Tumour_size"))
+ + geom_point(aes(colour="Vital_status"), size=0.5)
+ + stat_smooth()
+ + theme_light()
+)
+```
+
+`theme_matplotlib()` removes the gridlines and grey background, and add minor tickmarks and a border to the plot:
+
+```{r}
+(
+ggplot(metabric, aes("Age_at_diagnosis", "Tumour_size"))
+ + geom_point(aes(colour="Vital_status"), size=0.5)
+ + stat_smooth()
+ + theme_matplotlib()
+)
+```
+
+`theme_xkcd()` gives the plot a hand-drawn feel, following the style of the [xkcd webcomic](https://xkcd.com/):
+
+```{r}
+(
+ggplot(metabric, aes("Age_at_diagnosis", "Tumour_size"))
+ + geom_point(aes(colour="Vital_status"), size=0.5)
+ + stat_smooth()
+ + theme_xkcd()
+)
+```
+
+As well as using the settings pre-defined themes, we can specify changes to the theme directly. To do this, we add the `theme()` object to the plot, and make changes to specific aspects of the plot within the call to the object. For example, we can create a version of the scatterplot above that doesn't have a legend title. To do this, we set the value of the `legend_title` parameter as `element_blank()`. `element_blank()` is a special object the plotnine module that serves as an empty placeholder, and it can be used to remove the values for many different plot elements such as axis labels, axis values etc. In this case, it removes the legend title:
+
+```{r}
+(
+ggplot(metabric, aes("Age_at_diagnosis", "Tumour_size"))
+ + geom_point(aes(colour="Vital_status"), size=0.5)
+ + stat_smooth()
+ + theme(legend_title = element_blank())
+)
+```
+
+We can combine specific changes and pre-existing themes by first specifying the theme, and then using the `theme()` object to specify changes to that theme. When doing this, we must always apply the pre-defined theme first, otherwise the specific changes we have made using the `theme()` object will be overwritten. For example, we can apply the matplotlib theme, and then remove the legend title by using the `theme()` object:
+
+```{r}
+(
+ggplot(metabric, aes("Age_at_diagnosis", "Tumour_size"))
+ + geom_point(aes(colour="Vital_status"), size=0.5)
+ + stat_smooth()
+ + theme_matplotlib()
+#   \+ theme(legend_title = element_blank())
+
+)
+```
+
+## Saving plots
+Once we have produced a plot, we usually want to save it as a separate file. In Python, we can do this by assigning the `ggplot()` call to a variable, and then calling the `.save()` method on this variable. The first argument to `.save()` is always the file name (or full file path), with the file type determined by the file name ending. We can also specify the height and width of the plot, and the units of measurement for these dimensions.
+
+```{r}
+age_vs_size = (
+ggplot(metabric, aes("Age_at_diagnosis", "Tumour_size"))
+ + geom_point(aes(colour="Vital_status"), size=0.5)
+ + stat_smooth()
+ + theme_matplotlib()
+)
+age_vs_size.save("metabric_age_size.pdf", height=100, width=100, units="mm")
+age_vs_size.save("metabric_age_size.eps", height=100, width=100, units="mm")
+age_vs_size.save("metabric_age_size.png", height=100, width=100, units="mm")
+#age_vs_size
+```
+
+## Suppressing warning messages
+When using plotnine for data visualization, a lot of warning messages can be generated. For example,
+
+```{r}
+(
+ggplot(metabric, aes("Age_at_diagnosis", "Tumour_size"))
+ + geom_point(colour="grey", size=0.5)
+ + stat_smooth()
+)
+```
+
+These messages are often informative, but they can be undesirable if we want to use the notebook to communicate our findings. To suppress these messages, we can use the `filterwarnings()` function the `warnings` module. By setting this to "ignore", we will suppress warning messages plotnine:
+
+```{r}
+warnings
+warnings.filterwarnings('ignore')
+(
+ggplot(metabric, aes("Age_at_diagnosis", "Tumour_size"))
+ + geom_point(colour="grey", size=0.5)
+ + stat_smooth()
+)
+```
+
+**Use this with caution**: all warnings all Python modules will be suppressed, so it is usually sensible to run your code with warnings printed first, check the messages are safe to ignore, and then rerun your code with the messages suppressed.
+
+## Further reading
+In this session we have seen that plotnine can be used to generate many different plots with very little code. However, we have just scratched the surface of what is possible with this package, and with data visualization in Python more generally. There are many resources that you can use to extend your Python data vizualization skills:
+- to see the full range of plot types that can be generated with plotnine, see the [plotnine gallery](https://plotnine.readthedocs.io/en/stable/gallery.html)
+- for full details of how each plotnine geom and object works, see the [plotnine API documentation](https://plotnine.readthedocs.io/en/stable/api.html)
+- if you want to generate bespoke plots with full control over each plotting element, take a look at the [matplotlib](https://matplotlib.org/) and [seaborn](https://seaborn.pydata.org) modules
+
+# Homework
+
+## Exercise 1
+Plot the distribution of survival time for all patients, and use the *bins* parameter to change the granularity of the distribution.
+
+## Exercise 2
+Amend your code exercise 1 to create interleaved distributions of survival time for ER positive and ER negative tumours.
+
+## Exercise 3
+Generate a boxplot to compare survival time between different cancer types, incorporating the following features:
+1. Add points behind the boxes to show the raw data points
+2. Colour the boxes by Cancer type
+3. Separate the plot into individual facets for ER+ and ER-
+4. Rename the x axis to "Type of cancer"
+5. Rename the y axis to "Survival time (months)"
+6. Use a theme that removes the background colour and gridlines
+7. Remove the legend title
+8. Remove the X axis labels
+
+
+
+# Week 2 Solutions
+## Exercise 1
+Plot the distribution of survival time for all patients, and use the *bins* parameter to change the granularity of the distribution
+
+```{r}
+library(tidymodels)
+library(tidyverse)
+library(ggplot2)
+```
+
+```{r}
+# read in data
+metabric = read_csv("../data/metabric_clinical_and_expression_data.csv").dropna()
+metabric.dtypes
+```
+
+```{r}
+# plot histogram
+(
+ggplot(metabric, aes("Survival_time"))
+    + geom_histogram(bins=30)
+)
+
+# bins=1000
+```
+
+## Exercise 2
+Amend your code exercise 1 to create interleaved distributions of survival time for ER positive and ER negative tumours.
+
+```{r}
+# interleaved histograms of survival time for ER- and ER+
+(
+ggplot(metabric, aes("Survival_time", fill="ER_status"))
+    + geom_histogram(position="dodge", bins=50)
+)
+```
+
+## Exercise 3
+Generate a boxplot to compare survival time between different cancer types, incorporating the following features:
+1. Add points behind the boxes to show the raw data points
+2. Colour the boxes by Cancer type
+3. Separate the plot into individual facets for ER+ and ER-
+4. Rename the x axis to "Type of cancer"
+5. Rename the y axis to "Survival time (months)"
+6. Use a theme that removes the background colour and gridlines
+7. Remove the legend title
+8. Remove the X axis labels
+
+```{r}
+# change the ER status values to give more informative facet titles in the plot
+metabric["ER_status"] = metabric["ER_status"].replace("Positive", "ER+").replace("Negative", "ER-")
+
+# generate the boxplot
+(
+# colouring by cancer type by passing Cancer_type to fill
+ggplot(metabric, aes("Cancer_type", "Survival_time", fill="Cancer_type"))
+    # plot the points, using geom_jitter to minimise overlaps
+    + geom_jitter(alpha=0.9)
+    + geom_boxplot(alpha=0.5)
+    # plot the boxes
+    # separate the plot into facets
+    + facet_wrap("~ER_status", nrow=2)
+    # rename the x axis
+    + xlab("Type of cancer")
+    # rename the y axis
+    + ylab("Survival time (months)")
+    # specify theme to remove background colour and gridlines
+    + theme_classic()
+    + theme(
+        # remove the legend title
+        legend_title = element_blank(),
+        # suppress the x axis labels
+        axis_text_x = element_blank(),
+        # remove the background the facet titles
+        strip_background = element_blank(),
+        #axis_text_x= element_text(angle=45)
+        #axis_text_x  = element_text(angle = 30, hjust = 1)
+    )
+)
+```

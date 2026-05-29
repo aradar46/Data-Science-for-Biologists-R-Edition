@@ -1,0 +1,85 @@
+---
+title: "Week 5 - Machine Learning (PART 1 - Continued)"
+output: html_document
+---
+
+# Week 5 - Machine Learning (PART 1 - Continued)
+
+In this session, we continue our exploration of machine learning with a focus on non-linear models and multivariate regression using the `tidymodels` framework.
+
+```{r setup, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(tidymodels)
+library(ranger)
+library(rpart)
+library(rpart.plot)
+library(vip)
+```
+
+## 1. Multivariate Linear Regression with Recipes
+
+We will use the METABRIC dataset and build a preprocessing recipe to handle categorical variables.
+
+```{r}
+# Load data
+metabric <- read_csv("../data/metabric_clinical_and_expression_data.csv") %>%
+  drop_na()
+
+# Data split
+set.seed(42)
+metabric_split <- initial_split(metabric, prop = 0.8)
+train_data <- training(metabric_split)
+test_data  <- testing(metabric_split)
+
+# Recipe: Preprocessing
+metabric_recipe <- recipe(Survival_time ~ Tumour_size + ER_status + Cancer_type, data = train_data) %>%
+  step_dummy(ER_status, Cancer_type) # One-hot encoding equivalent
+
+# Model spec
+lm_spec <- linear_reg() %>% set_engine("lm")
+
+# Workflow
+metabric_wflow <- workflow() %>%
+  add_recipe(metabric_recipe) %>%
+  add_model(lm_spec)
+
+# Fit
+metabric_fit <- fit(metabric_wflow, train_data)
+
+# Results
+tidy(metabric_fit)
+```
+
+## 2. Moving Beyond Linear Models
+
+We explore Decision Trees and Random Forests using the CPS Wages dataset.
+
+```{r}
+# Load CPS Wages
+wages_url <- "http://lib.stat.cmu.edu/datasets/CPS_85_Wages"
+wages <- read_table(wages_url, skip = 27, col_names = FALSE) %>%
+  select(X1, X4, X6, X7)
+colnames(wages) <- c("EDUCATION", "EXPERIENCE", "WAGE", "AGE")
+```
+
+### Random Forest Regression
+
+```{r}
+# Model spec
+rf_spec <- rand_forest() %>%
+  set_engine("ranger", importance = "impurity") %>%
+  set_mode("regression")
+
+# Fit
+rf_fit <- rf_spec %>%
+  fit(WAGE ~ EXPERIENCE + EDUCATION + AGE, data = wages)
+
+# Feature Importance
+vip(rf_fit)
+```
+
+## Exercises
+
+1.  Compare the performance (RMSE) of a Linear Regression model versus a Random Forest model on the `wages` dataset.
+2.  Use `rsample` to perform 5-fold cross-validation on your Random Forest model.
+3.  Tune the `trees` hyperparameter for the Random Forest model.

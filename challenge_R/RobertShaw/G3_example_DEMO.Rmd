@@ -1,0 +1,126 @@
+---
+title: "G3 example - DEMO (R Version)"
+output: html_document
+---
+
+# Particle Size Data Processing
+
+In this challenge, we process and summarize particle size data using the `tidyverse`. This workflow is designed to handle multiple raw text files, perform geometric calculations, and bin data for downstream analysis.
+
+```{r setup, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(readxl)
+library(writexl)
+```
+
+## Setup Paths and Metadata
+
+Specify the path and file name of the metadata file. This file should contain a list of filenames and their corresponding batches.
+
+```{r}
+# Path updated for relative access within the repository
+filenames_path <- "./"
+filenames_name <- "Raw data & meta data.xlsx"
+
+# Note: This step assumes the metadata file exists.
+# We wrap it in a conditional or provide a template for students.
+if (file.exists(paste0(filenames_path, filenames_name))) {
+  df_names <- read_excel(paste0(filenames_path, filenames_name), sheet = 'Data for Python DEMO')
+} else {
+  message("Metadata file not found. Please provide 'Raw data & meta data.xlsx'.")
+  # Placeholder for demonstration
+  df_names <- tibble(Filename = character(), Batch = character())
+}
+```
+
+## Create one stacked file combining all individual files
+
+In R, we can use `purrr::map_df` to read multiple files, apply sampling, and stack them efficiently.
+
+```{r}
+# This chunk demonstrates how to read and sample 5000 rows from each file
+read_and_sample <- function(row) {
+  if (!file.exists(row$Filename)) return(NULL)
+
+  read_tsv(row$Filename, locale = locale(encoding = "latin1")) %>%
+    slice_sample(n = 5000) %>%
+    mutate(Batch = row$Batch)
+}
+
+# Execution (commented out as it depends on external files)
+# appended_data <- df_names %>%
+#   split(1:nrow(.)) %>%
+#   map_df(read_and_sample)
+
+# For demo purposes, we assume 'appended_data' is created here
+```
+
+## Summarise the data by binning
+
+We calculate the cylinder volume and log-transform it to create bins.
+
+```{r}
+# Example logic for calculation and binning
+process_data <- function(df) {
+  df %>%
+    mutate(
+      cyl_vol = pi * `Length (µm)` * (`Width (µm)` / 2)^2,
+      log_cyl_vol = log10(cyl_vol)
+    ) %>%
+    # Create 40 bins between 0 and 10
+    mutate(bins = cut(log_cyl_vol, breaks = seq(0, 10, length.out = 41), include.lowest = TRUE)) %>%
+    group_by(Batch, bins) %>%
+    summarise(
+      Count = n(),
+      Sum_cyl_vol = sum(cyl_vol, na.rm = TRUE),
+      across(c(Circularity, Convexity, Solidity, `Aspect Ratio`), median, na.rm = TRUE),
+      .groups = "drop"
+    )
+}
+```
+
+## Create Excel output for Spotfire
+
+We calculate percentages per batch for both volume and count.
+
+```{r}
+finalize_for_export <- function(df_summ) {
+  df_summ %>%
+    group_by(Batch) %>%
+    mutate(
+      perc_cyl_vol = 100 * Sum_cyl_vol / sum(Sum_cyl_vol),
+      cum_perc_cyl_vol = cumsum(perc_cyl_vol),
+      perc_N = 100 * Count / sum(Count),
+      cum_perc_N = cumsum(perc_N)
+    ) %>%
+    ungroup()
+}
+
+# write_xlsx(df_final, "df_binned_data.xlsx")
+```
+
+## Create pivoted data for modelling
+
+Finally, we reshape the data to a wide format, which is often required by modelling software like MODDE.
+
+```{r}
+create_pivoted_data <- function(df_final) {
+  df_final %>%
+    pivot_wider(
+      id_cols = Batch,
+      names_from = bins,
+      values_from = c(Count, Circularity, Convexity),
+      names_glue = "{.value}_{bins}"
+    )
+}
+
+# write_xlsx(df_pivoted, "df_pivoted_data.xlsx")
+```
+
+# Summary
+
+This workflow demonstrates how to:
+1.  Batch-load and sample large text files using `purrr` and `readr`.
+2.  Perform custom geometric calculations with `dplyr`.
+3.  Bin continuous data and calculate grouped statistics.
+4.  Reshape data for external modelling tools using `tidyr`.

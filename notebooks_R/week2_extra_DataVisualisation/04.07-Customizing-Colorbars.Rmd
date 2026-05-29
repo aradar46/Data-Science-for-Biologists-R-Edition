@@ -1,0 +1,55 @@
+---
+title: "Customizing Colorbars in R"
+output: html_document
+---
+
+# Customizing Colorbars
+
+In R, continuous color scales automatically produce a colorbar (legend). We can customize these using the `scale_*_gradient*` family of functions and `guides()`.
+
+```{r setup, message=FALSE, warning=FALSE}
+library(tidyverse)
+```
+
+## Basic Colorbars
+
+Colorbars are generated when a continuous variable is mapped to the `color` or `fill` aesthetic.
+
+```{r}
+# Using the built-in faithful dataset
+ggplot(faithful, aes(x = eruptions, y = waiting, color = eruptions)) +
+  geom_point() +
+  scale_color_viridis_c() +
+  theme_minimal()
+```
+
+## Customizing Color Scales
+
+We can control the limits, colors, and title of the colorbar.
+
+```{r}
+ggplot(faithful, aes(x = eruptions, y = waiting, color = eruptions)) +
+  geom_point() +
+  scale_color_gradient(low = "blue", high = "red") +
+  labs(color = "Eruption Duration (min)") +
+  theme_bw()
+```
+
+## Controlling Colorbar Appearance with `guides()`
+
+Use `guide_colorbar()` for fine-grained control over the colorbar's dimensions and labels.
+
+```{r}
+ggplot(faithful, aes(x = eruptions, y = waiting, color = eruptions)) +
+  geom_point() +
+  scale_color_viridis_c() +
+  guides(color = guide_colorbar(barwidth = 15, barheight = 1, title.position = "top")) +
+  theme(legend.position = "bottom")
+```
+
+## Summary
+
+-   **Continuous Mapping:** Continuous variables mapped to color/fill produce colorbars.
+-   **Color Palettes:** Use `scale_color_viridis_c()` or `scale_color_distiller()` for pre-defined palettes.
+-   **Manual Control:** Use `scale_color_gradient()` for custom start/end colors.
+-   **Refinement:** Use `guide_colorbar()` within `guides()` to adjust physical properties.

@@ -1,0 +1,107 @@
+---
+title: "Week 1 - Assignment Solutions"
+output: html_document
+---
+
+# Week 1 - assignment solution
+
+### Exercise 1
+
+- Read the dataset `metabric_clinical_and_expression_data.csv` and store its summary statistics into a new variable called `metabric_summary`.
+- Write your summary statistics object into a file called `metabric_summary.csv`.
+- Generate a Tab Separated Value (TSV) file instead.
+- Produce an Excel spreadsheet containing summary statistics using `writexl`.
+
+```{r setup, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(writexl)
+```
+
+```{r}
+# Read metabric dataset
+metabric <- read_csv("../data/metabric_clinical_and_expression_data.csv")
+
+# Store summary statistics
+# In R, summary() returns a table, but for writing to file, we might want a tidy summary
+metabric_summary <- summary(metabric)
+print(metabric_summary)
+
+# Better summary for export:
+metabric_stats <- metabric %>%
+  summarise(across(where(is.numeric), list(mean = mean, sd = sd), na.rm = TRUE))
+```
+
+```{r}
+# Write summary statistics
+write_csv(metabric_stats, "metabric_summary.csv")
+write_tsv(metabric_stats, "metabric_summary.tsv")
+write_xlsx(metabric_stats, "metabric_summary.xlsx")
+```
+
+### Exercise 2
+
+- Calculate the mean tumour size of patients grouped by vital status and tumour stage.
+- Find the cohort of patients and tumour stage where the average expression of genes TP53 and FOXA1 is highest.
+- Do patients with greater tumour size live longer? How about patients with greater tumour stage? How about greater Nottingham_prognostic_index?
+
+```{r}
+# Grouped mean tumour size
+metabric %>%
+  group_by(Vital_status, Tumour_stage) %>%
+  summarise(mean_size = mean(Tumour_size, na.rm = TRUE), .groups = "drop")
+```
+
+```{r}
+# Highest average expression of TP53 and FOXA1
+metabric %>%
+  mutate(gene_mean = (TP53 + FOXA1) / 2) %>%
+  group_by(Cohort, Tumour_stage) %>%
+  summarise(avg_expr = mean(gene_mean, na.rm = TRUE), .groups = "drop") %>%
+  arrange(desc(avg_expr)) %>%
+  slice(1)
+```
+
+```{r}
+# Correlations with Survival Time
+metabric_dead <- metabric %>% filter(Vital_status == 'Died of Disease')
+
+# Tumour size correlation
+cor(metabric_dead$Tumour_size, metabric_dead$Survival_time, use = "complete.obs")
+
+# Tumour stage grouped stats
+metabric_dead %>%
+  group_by(Tumour_stage) %>%
+  summarise(mean_surv = mean(Survival_time, na.rm = TRUE), n = n())
+
+# Nottingham Prognostic Index correlation
+cor(metabric_dead$Nottingham_prognostic_index, metabric_dead$Survival_time, use = "complete.obs")
+```
+
+### Exercise 3 (bonus)
+
+- Which variables have missing data?
+- Find the patients IDs who have missing tumour size and/or missing mutation count data.
+- Fill in missing tumour size data using the cohort average.
+
+```{r}
+# Variables with missing data
+colSums(is.na(metabric))
+```
+
+```{r}
+# Patients with missing values
+metabric %>%
+  filter(is.na(Tumour_size) | is.na(Mutation_count)) %>%
+  select(Patient_ID, Cohort, Tumour_size, Mutation_count)
+```
+
+```{r}
+# Fill missing tumour size with cohort mean
+metabric_filled <- metabric %>%
+  group_by(Cohort) %>%
+  mutate(Tumour_size = if_else(is.na(Tumour_size), mean(Tumour_size, na.rm = TRUE), Tumour_size)) %>%
+  ungroup()
+
+# Validation
+sum(is.na(metabric_filled$Tumour_size))
+```
