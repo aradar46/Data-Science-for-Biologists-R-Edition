@@ -1,0 +1,233 @@
+---
+title: "Week 2 Solutions"
+output: html_document
+---
+
+We begin by importing the relevant packages and data sets.
+
+```{r setup, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(palmerpenguins)
+
+# Load METABRIC data
+metabric <- read_csv("../data/metabric_clinical_and_expression_data.csv")
+
+# Set a clean default theme
+theme_set(theme_minimal())
+```
+
+```{r}
+head(penguins)
+```
+
+```{r}
+head(metabric)
+```
+
+## Exercises from the Text
+
+### A
+
+**<span style="color:blue">Exercise</span>**: From the penguins data set, create a plot of flipper length vs bill length where the points are also sized by the overall mass of the penguin, and see if you can control the range of sizes used. There is clearly a relationship between body mass and both flipper and bill length. Is this plot the most approporiate way to show this?
+
+The code for the original plot is as follows:
+
+```{r}
+ggplot(data = penguins, aes(x = bill_length_mm, y = flipper_length_mm, color = species)) +
+  geom_point(size = 3) +
+  scale_color_manual(values = c("Adelie" = "red", "Chinstrap" = "blue", "Gentoo" = "turquoise4")) +
+  labs(
+    x = "Bill Length (mm)",
+    y = "Flipper Length (mm)",
+    color = "Species"
+  ) +
+  theme(axis.title.x = element_text(color = "blue", size = 15),
+        axis.title.y = element_text(size = 15))
+```
+
+To control the point size via a variable, we use the `size` aesthetic. We can control the range of sizes used via the `scale_size_continuous()` function, passing a vector to the `range` argument.
+
+```{r}
+ggplot(data = penguins, aes(x = bill_length_mm, y = flipper_length_mm, color = species, size = body_mass_g)) +
+  geom_point(alpha = 0.7) +
+  scale_size_continuous(range = c(2, 8)) +
+  scale_color_manual(values = c("Adelie" = "red", "Chinstrap" = "blue", "Gentoo" = "turquoise4")) +
+  labs(
+    x = "Bill Length (mm)",
+    y = "Flipper Length (mm)",
+    color = "Species",
+    size = "Body Mass (g)"
+  ) +
+  theme(axis.title = element_text(size = 15))
+```
+
+**<span style="color:#830051">Corporate bonus exercise</span>**: Update this plot to use the official AstraZeneca colour palette.
+
+We can achieve this via the use of hex codes.
+
+```{r}
+ggplot(data = penguins, aes(x = bill_length_mm, y = flipper_length_mm, color = species, size = body_mass_g)) +
+  geom_point(alpha = 0.7) +
+  scale_size_continuous(range = c(2, 8)) +
+  scale_color_manual(values = c("Adelie" = "#D0006F", "Chinstrap" = "#68D2DF", "Gentoo" = "#3F4444")) +
+  labs(
+    x = "Bill Length (mm)",
+    y = "Flipper Length (mm)",
+    color = "Species",
+    size = "Body Mass (g)"
+  ) +
+  theme(axis.title = element_text(size = 15))
+```
+
+### B
+
+**<span style="color:blue">Exercise</span>**: To visualise the distribution of a discrete variable, a bar chart would be appropriate. Pick a discrete variable from the metabric data set and use `geom_bar()` to plot a bar chart showing its distribution. Ensure that all plot properties such as the axis labels are customised to your satisfaction.
+
+Let's have a look at the distribution of tumour stages in the metabric dataset.
+
+```{r}
+ggplot(data = metabric, aes(x = factor(Tumour_stage))) +
+  geom_bar(fill = "steelblue", color = "black") + 
+  labs(
+    x = "Tumour Stage",
+    y = "Count"
+  ) +
+  theme(axis.title = element_text(size = 15))
+```
+
+### C
+
+**<span style="color:blue">Exercise</span>**: Create plots to answer the following questions:
+- Does the expression profile of ESR1 differ between patients who have and haven't undergone chemotherapy?
+- What about radiotherapy?
+- What about the four different combinations of chemotherapy and radiotherapy?
+
+The first two parts can be easily answered using violin plots, optionally with points jittered on top (a "beeswarm" alternative).
+
+Let's put both plots in a grid of subplots using `patchwork` or just print them individually. Here we'll do them sequentially or simply using `facet_wrap` if reshaped, but standard separate plots are fine too. Since we're in R, `ggpubr` or `patchwork` handles multi-plots well. Let's use standard plotting for now:
+
+```{r}
+# ESR1 by Chemotherapy
+plot_chemo <- ggplot(data = metabric %>% filter(!is.na(Chemotherapy)), aes(x = Chemotherapy, y = ESR1)) +
+  geom_violin(fill = "white") +
+  geom_jitter(width = 0.2, size = 0.5, alpha = 0.5) +
+  labs(y = "ESR1 Expression", x = "Chemotherapy") +
+  theme(axis.title = element_text(size = 15))
+
+# ESR1 by Radiotherapy
+plot_radio <- ggplot(data = metabric %>% filter(!is.na(Radiotherapy)), aes(x = Radiotherapy, y = ESR1)) +
+  geom_violin(fill = "white") +
+  geom_jitter(width = 0.2, size = 0.5, alpha = 0.5) +
+  labs(y = "ESR1 Expression", x = "Radiotherapy") +
+  theme(axis.title = element_text(size = 15))
+
+# If you have the `patchwork` library installed, you can display them together:
+# library(patchwork)
+# plot_chemo / plot_radio
+plot_chemo
+plot_radio
+```
+
+To look at the different combinations, it is easiest to create a new variable representing the different combinations using `mutate()` and `case_when()`.
+
+```{r}
+metabric <- metabric %>%
+  mutate(Therapy_combinations = case_when(
+    Chemotherapy == "YES" & Radiotherapy == "YES" ~ "Both",
+    Chemotherapy == "YES" & Radiotherapy == "NO" ~ "Chemo Only",
+    Chemotherapy == "NO" & Radiotherapy == "YES" ~ "Radio Only",
+    Chemotherapy == "NO" & Radiotherapy == "NO" ~ "Neither",
+    TRUE ~ NA_character_
+  )) %>%
+  # Make it a factor to control the order in the plot
+  mutate(Therapy_combinations = factor(Therapy_combinations, 
+                                       levels = c("Both", "Chemo Only", "Radio Only", "Neither")))
+```
+
+We can then make the plot fairly simply.
+
+```{r}
+ggplot(data = metabric %>% filter(!is.na(Therapy_combinations)), 
+       aes(x = Therapy_combinations, y = ESR1)) +
+  geom_violin(fill = "white") +
+  geom_jitter(width = 0.2, size = 0.5, alpha = 0.5) +
+  labs(
+    x = "Therapy Combination",
+    y = "ESR1 Expression"
+  ) +
+  theme(axis.title = element_text(size = 15))
+```
+
+## Exercise 1
+
+In this exercise, we shall use correlation plots to look at the correlation between the gene expression variables in the metabric data set.
+
+- Use the `cor()` function to create a correlation matrix for all the gene expression variables. *Note:* The `select()` functionality from dplyr will be useful here.
+- Create a heatmap visualising these correlations. Do you notice anything? Try manually ordering the different variables to best highlight the patterns in the heatmap.
+
+We first create a correlation matrix for the different genes with expression data:
+- Recall we can use `select(ESR1:MLPH)` to select a range of columns
+- The `cor()` function produces a correlation matrix (we set method to spearman and specify `use="pairwise.complete.obs"` to handle missing data).
+
+```{r, message=FALSE, warning=FALSE}
+library(corrplot)
+
+gene_expression_matrix <- metabric %>%
+  select(ESR1:MLPH)
+
+gene_expression_correlation <- cor(gene_expression_matrix, method = "spearman", use = "pairwise.complete.obs")
+gene_expression_correlation
+```
+
+```{r}
+corrplot(gene_expression_correlation, method = "color")
+```
+
+Note the scale! In this plot, blue indicates positive correlation and red indicates negative correlation. You can see strong correlation blocks.
+
+We can manually order the variables to highlight the patterns by indexing the correlation matrix. Or, `corrplot` provides clustering algorithms to order them automatically.
+
+```{r}
+# Manual ordering to bring correlated variables together
+ordered_genes <- c("ESR1", "GATA3", "FOXA1", "MLPH", "PGR", "ERBB2", "TP53", "PIK3CA")
+gene_expression_correlation_ordered <- gene_expression_correlation[ordered_genes, ordered_genes]
+
+corrplot(gene_expression_correlation_ordered, method = "color")
+```
+
+**<span style="color:Seagreen">For Thought</span>**: Here we were able to manually look at the heatmap and pick out an order of genes that best highlighted their correlation structure. If we had many more genes this would not be possible. How might we automatically determine an order for them? (Hint: `corrplot(..., order="hclust")`).
+
+## Exercise 2
+
+Earlier we used histograms to visualise the age distribution of the patients in our data set. In this exercise, we look at some options for visualising how this age distribution breaks down across the different cohorts.
+
+- One option is to use `geom_density()`, which plots the density curve instead of actual bars. Use this function to plot five different density curves on a single axis, one for the age distribution of patients within each cohort.
+- Another option is to use subplots. Create a figure where the histogram for the age distribution within each cohort is on a different set of axes. `facet_wrap()` makes this incredibly easy in ggplot2!
+
+Which of these options do you prefer? 
+
+To get multiple plots for different cohorts, one option is to set cohort as a variable to colour/fill by.
+
+```{r}
+ggplot(data = metabric %>% filter(!is.na(Cohort)), aes(x = Age_at_diagnosis, color = factor(Cohort))) +
+  geom_density(size = 1) +
+  labs(
+    x = "Age at Diagnosis",
+    y = "Density",
+    color = "Cohort"
+  ) +
+  theme_minimal()
+```
+
+One option to create subplots is to use `facet_wrap()`. This is much simpler than creating a `for` loop as you would do in python!
+
+```{r}
+ggplot(data = metabric %>% filter(!is.na(Cohort)), aes(x = Age_at_diagnosis)) +
+  geom_histogram(bins = 30, fill = "steelblue", color = "black") +
+  labs(
+    x = "Age at Diagnosis",
+    y = "Count"
+  ) +
+  facet_wrap(~ Cohort, ncol = 3) +
+  theme_minimal()
+```

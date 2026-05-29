@@ -1,0 +1,52 @@
+---
+title: "Geographic Data in R"
+output: html_document
+---
+
+# Geographic Data and Mapping
+
+Geographic visualization is a common task in data science. In R, `ggplot2` combined with the `maps` package provides an easy way to visualize geographic data.
+
+```{r setup, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(maps)
+```
+
+## Static Maps with `ggplot2`
+
+`ggplot2` provides `geom_polygon()` combined with `coord_quickmap()` for plotting spatial objects.
+
+```{r}
+# Load world map data
+world <- map_data("world")
+
+# Plot world map
+ggplot(data = world, aes(x = long, y = lat, group = group)) +
+  geom_polygon(fill = "antiquewhite", color = "gray") +
+  coord_quickmap() +
+  theme_minimal()
+```
+
+## Plotting Points on a Map
+
+We can overlay data points (like cities) onto a map.
+
+```{r}
+# Example cities
+cities <- tibble(
+  city = c("London", "New York", "Tokyo"),
+  lat = c(51.5074, 40.7128, 35.6895),
+  lon = c(-0.1278, -74.0060, 139.6917)
+)
+
+ggplot(data = world, aes(x = long, y = lat, group = group)) +
+  geom_polygon(fill = "antiquewhite", color = "gray") +
+  geom_point(data = cities, aes(x = lon, y = lat, group = NULL), color = "red", size = 3) +
+  coord_quickmap() +
+  theme_bw()
+```
+
+## Summary
+
+-   **Data Standard:** Use the `maps` package to get boundary data.
+-   **Static Maps:** Use `geom_polygon()` and `coord_quickmap()` in `ggplot2` for reproducible static figures.

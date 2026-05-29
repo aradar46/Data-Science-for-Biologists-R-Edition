@@ -1,4 +1,4 @@
-filepaths <- list.files(c("notebooks_R", "challenge_R"), pattern = "\\.Rmd$", full.names = TRUE, recursive = TRUE)
+filepaths <- list.files(c("notebooks", "challenge"), pattern = "\\.Rmd$", full.names = TRUE, recursive = TRUE)
 
 results <- list()
 for (filepath in filepaths) {

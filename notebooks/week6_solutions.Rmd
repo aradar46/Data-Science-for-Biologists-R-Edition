@@ -1,0 +1,107 @@
+---
+title: "Week 6 - Machine Learning Solutions (PART 2)"
+output: html_document
+---
+
+# Week 6 - Machine Learning Solutions (PART 2)
+
+In this session, we implement a classification model based on the Nature Machine Intelligence paper, "An interpretable mortality prediction model for COVID-19 patients".
+
+```{r setup, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(tidymodels)
+library(ranger)
+library(vip)
+```
+
+## 1. Data Preparation
+
+```{r}
+# Note: In a real scenario, we would load the dataset here
+# For this solution, we assume a data frame 'covid_data' exists
+# covid_data <- read_csv("../data/covid_mortality_data.csv")
+
+# Simulated structure for demonstration:
+set.seed(42)
+covid_data <- tibble(
+  LDH = rnorm(200, 400, 100),
+  hs_CRP = rnorm(200, 50, 20),
+  lymphocytes = rnorm(200, 15, 5),
+  outcome = factor(sample(c("Survived", "Deceased"), 200, replace = TRUE))
+)
+```
+
+## 2. Model Training and Evaluation
+
+```{r}
+# 1. Split
+covid_split <- initial_split(covid_data, prop = 0.7, strata = outcome)
+covid_train <- training(covid_split)
+covid_test  <- testing(covid_split)
+
+# 2. Model Specification
+rf_spec <- rand_forest(trees = 500) %>%
+  set_engine("ranger", importance = "impurity") %>%
+  set_mode("classification")
+
+# 3. Fit
+rf_fit <- rf_spec %>%
+  fit(outcome ~ ., data = covid_train)
+
+# 4. Predict and Evaluate
+results <- covid_test %>%
+  select(outcome) %>%
+  bind_cols(predict(rf_fit, covid_test)) %>%
+  bind_cols(predict(rf_fit, covid_test, type = "prob"))
+
+# Confusion Matrix
+conf_mat(results, truth = outcome, estimate = .pred_class)
+
+# F1 Score
+f_meas(results, truth = outcome, estimate = .pred_class)
+```
+
+## 3. Feature Importance
+
+One of the key findings of the paper was the importance of LDH, lymphocytes, and hs-CRP.
+
+```{r}
+vip(rf_fit) +
+  labs(title = "Feature Importance for COVID-19 Mortality Prediction") +
+  theme_minimal()
+```
+
+## 4. Hyperparameter Tuning
+
+```{r}
+# Tuneable spec
+tune_spec <- rand_forest(
+  mtry = tune(),
+  trees = 500,
+  min_n = tune()
+) %>%
+  set_engine("ranger") %>%
+  set_mode("classification")
+
+# Folds
+covid_folds <- vfold_cv(covid_train, v = 5)
+
+# Tune
+tune_res <- tune_grid(
+  tune_spec,
+  outcome ~ .,
+  resamples = covid_folds,
+  grid = 5
+)
+
+# Best Model
+best_rf <- tune_res %>% select_best(metric = "roc_auc")
+final_rf <- finalize_model(tune_spec, best_rf)
+final_fit <- final_rf %>% fit(outcome ~ ., data = covid_train)
+
+# Final Test Performance
+final_fit %>%
+  predict(covid_test) %>%
+  bind_cols(covid_test) %>%
+  metrics(truth = outcome, estimate = .pred_class)
+```

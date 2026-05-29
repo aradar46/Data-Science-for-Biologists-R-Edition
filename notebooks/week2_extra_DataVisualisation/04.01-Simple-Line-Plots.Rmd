@@ -1,0 +1,76 @@
+---
+title: "Simple Line Plots in R"
+output: html_document
+---
+
+# Simple Line Plots
+
+Perhaps the simplest of all plots is the visualization of a single function $y = f(x)$. Here we will create simple line plots using `ggplot2`.
+
+```{r setup, message=FALSE, warning=FALSE}
+library(tidyverse)
+```
+
+## Creating a Simple Plot
+
+In `ggplot2`, we typically start with a data frame and map our variables to aesthetics. For functions, we can generate a data frame of $x$ and $y$ values.
+
+```{r}
+# Generate data
+df <- tibble(
+  x = seq(0, 10, length.out = 1000),
+  y = sin(x)
+)
+
+# Basic line plot
+ggplot(df, aes(x = x, y = y)) +
+  geom_line()
+```
+
+## Adjusting the Plot: Line Colors and Styles
+
+We can control the appearance of the line using arguments within `geom_line()`.
+
+```{r}
+# Color and Linetype
+ggplot(df, aes(x = x, y = y)) +
+  geom_line(color = "blue", linetype = "dashed", size = 1) +
+  theme_minimal()
+```
+
+Common linetypes in R include: `"solid"`, `"dashed"`, `"dotted"`, `"dotdash"`, `"longdash"`, and `"twodash"`.
+
+## Multiple Lines
+
+To plot multiple functions, we can either layer geoms or, more idiomatically, "tidy" our data.
+
+```{r}
+# Layering approach
+ggplot(df, aes(x = x)) +
+  geom_line(aes(y = sin(x), color = "Sine")) +
+  geom_line(aes(y = cos(x), color = "Cosine")) +
+  labs(color = "Function")
+```
+
+## Adjusting Axes and Labeling
+
+`ggplot2` provides several functions for controlling axis limits and labels.
+
+```{r}
+ggplot(df, aes(x = x, y = y)) +
+  geom_line() +
+  xlim(-1, 11) +
+  ylim(-1.5, 1.5) +
+  labs(
+    title = "A Sine Curve",
+    x = "x",
+    y = "sin(x)"
+  ) +
+  theme_bw()
+```
+
+## Summary
+
+-   **Data First:** `ggplot2` works best when data is in a data frame (tibble).
+-   **Layers:** Use `+` to add `geom_line()`, `labs()`, and `theme()` layers.
+-   **Scales:** Use `xlim()` and `ylim()` for simple coordinate adjustments.

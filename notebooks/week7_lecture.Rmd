@@ -1,0 +1,148 @@
+---
+title: "Week 7 - Networks and Knowledge Graphs"
+output: html_document
+---
+
+# R Course - Networks and Knowledge Graphs
+
+Katarzyna Nurzynska, Sebastian Nilsson, BIKG (Adapted for R)
+
+## Overview
+
+**We will go through:**
+
+*   Background on networks and graphs
+*   **Part 1: Simple Networks**
+    *   Building networks with `tidygraph`
+    *   Network analysis using degree metrics
+    *   Visualization with `ggraph` and `visNetwork`
+    *   *First use case: drug-drug interactions*
+*   **Part 2: Knowledge Graphs & BIKG**
+    *   Introduction to Knowledge Graphs
+    *   Overview of the Biological Insights Knowledge Graph (BIKG)
+    *   *Second use case: Trop2*
+
+## Background
+
+**What are networks and graphs?**
+
+A network (or graph) is a collection of nodes (vertices) and edges (links) that model relationships. In biological systems, these can represent protein-protein interactions, metabolic pathways, or drug-drug interactions.
+
+**What is a Knowledge Graph?**
+
+A Knowledge Graph is a set of data points connected by relations that describe a domain. It enables automated insights and complex queries across heterogeneous data sources.
+
+## Part 1: Simple Networks in R
+
+In R, the `tidygraph` package provides a tidy approach to graph manipulation, while `ggraph` extends `ggplot2` for graph visualization.
+
+```{r setup, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(tidygraph)
+library(ggraph)
+library(visNetwork)
+```
+
+### Building a Graph
+
+```{r}
+# Define nodes and edges
+nodes <- tibble(name = c('A', 'B', 'C', 'D', 'E'))
+edges <- tibble(
+  from = c('A', 'A', 'B', 'B', 'B', 'C'),
+  to   = c('B', 'C', 'D', 'E', 'A', 'E')
+)
+
+# Create a tidygraph object
+G <- tbl_graph(nodes = nodes, edges = edges, directed = FALSE)
+
+# Print vertex and edge sets
+G
+```
+
+### Visualising the Graph
+
+```{r}
+ggraph(G, layout = "stress") +
+  geom_edge_link() +
+  geom_node_point(size = 8, color = "lightblue") +
+  geom_node_text(aes(label = name), vjust = 0.5, hjust = 0.5) +
+  theme_graph()
+```
+
+### Weighted Graphs
+
+```{r}
+edges_weighted <- tibble(
+  from = c('A', 'A', 'B', 'B', 'C'),
+  to   = c('B', 'C', 'D', 'E', 'E'),
+  weight = c(2, 1, 5, 3, 2)
+)
+
+G_weighted <- tbl_graph(nodes = nodes, edges = edges_weighted, directed = FALSE)
+
+ggraph(G_weighted, layout = "stress") +
+  geom_edge_link(aes(width = weight, label = weight),
+                 angle_calc = 'along', label_dodge = unit(2.5, 'mm')) +
+  geom_node_point(size = 5) +
+  geom_node_text(aes(label = name), repel = TRUE) +
+  theme_graph()
+```
+
+## First Use Case: Drug-Drug Interactions (DDI)
+
+### 1) Data Overview
+
+We use data summarising drug-drug interactions (DDI). Each interaction is a relationship between two compounds.
+
+```{r, eval=FALSE}
+# Example loading
+# DDI_data <- read_csv("../data/DDI_data.csv")
+```
+
+### 2) Network Analysis Logic
+
+In R, we can calculate node degree (number of connections) to identify highly interacting drugs.
+
+```{r, eval=FALSE}
+# Top 20 connected drugs example
+G_ddi %>%
+  activate(nodes) %>%
+  mutate(degree = centrality_degree()) %>%
+  arrange(desc(degree)) %>%
+  head(20)
+```
+
+### 3) Interactive Visualisation with `visNetwork`
+
+`visNetwork` allows for interactive exploration of complex networks.
+
+```{r}
+# Interactive example
+nodes_vis <- data.frame(id = 1:5, label = LETTERS[1:5])
+edges_vis <- data.frame(from = c(1, 2, 2, 3), to = c(2, 3, 4, 1))
+
+visNetwork(nodes_vis, edges_vis) %>%
+  visOptions(highlightNearest = TRUE, nodesIdSelection = TRUE) %>%
+  visPhysics(solver = "forceAtlas2Based")
+```
+
+## Part 2: Knowledge Graphs & BIKG
+
+Knowledge Graphs like BIKG (Biological Insights Knowledge Graph) serve as a backbone for data integration, enabling discovery via machine learning.
+
+### Trop2 Subgraph Analysis
+
+Trop2 is a key target in many cancer types. By querying a Knowledge Graph, we can find associated compounds and diseases.
+
+```{r, eval=FALSE}
+# Porting logic: filtering subgraphs in R
+# trop2_neighbors <- edges %>%
+#   filter(source_id == "TACSTD2" | target_id == "TACSTD2")
+```
+
+### Summary
+
+*   Graphs allow us to model complex biological relationships.
+*   `tidygraph` and `ggraph` bring the power of the `tidyverse` to network science.
+*   Knowledge Graphs provide a platform for data integration and emergent signal detection.

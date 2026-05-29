@@ -1,0 +1,121 @@
+---
+title: "Week 7 - METABRIC Data Analysis"
+output: html_document
+---
+
+# METABRIC - Data Analysis
+
+**By Katarzyna Nurzynska (Adapted for R)**
+
+The Molecular Taxonomy of Breast Cancer International Consortium (METABRIC) database.
+Obtained from the following publication: https://www.nature.com/articles/ncomms11479
+
+### Aims
+
+1.  **To identify factors that contribute to patient survival.**
+2.  **To examine the utility of dimensionality reduction (PCA) and K-means clustering to identify subgroups of patients.**
+3.  **To use Machine Learning tools (Linear Regression and Survival Analysis) to describe factors in cancer heterogeneity.**
+
+```{r setup, message=FALSE, warning=FALSE}
+# Import libraries
+library(tidyverse)
+library(tidymodels)
+library(survival)
+library(survminer)
+library(broom)
+library(ggpubr)
+library(factoextra)
+library(cluster)
+library(corrplot)
+```
+
+## Data Overview
+
+```{r}
+# Input data
+metabric <- read_csv("../data/metabric_clinical_and_expression_data.csv")
+
+# Dimensions
+dim(metabric)
+
+# Summary
+summary(metabric)
+```
+
+### Visualisation
+
+```{r}
+p1 <- ggplot(metabric, aes(x = Vital_status)) + geom_bar() + theme_minimal()
+p2 <- ggplot(metabric, aes(x = as.factor(Tumour_stage))) + geom_bar() + labs(x = "Tumour Stage") + theme_minimal()
+p3 <- ggplot(metabric, aes(x = PAM50)) + geom_bar() + theme_minimal() + theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+ggarrange(p1, p2, p3, ncol = 2, nrow = 2)
+```
+
+## Dimensionality Reduction (PCA)
+
+We preprocess the data by handling missing values and encoding categorical variables.
+
+```{r}
+# Remove NAs and non-numeric columns for PCA
+metabric_clean <- metabric %>% drop_na()
+
+pca_data <- metabric_clean %>%
+  select(Age_at_diagnosis, Tumour_size, Tumour_stage, Mutation_count, ESR1, ERBB2, PGR, TP53, PIK3CA, GATA3, FOXA1, MLPH)
+
+# Scale and PCA
+pca_res <- prcomp(pca_data, scale. = TRUE)
+
+# Scree plot
+fviz_eig(pca_res, addlabels = TRUE)
+```
+
+### PCA Biplot
+
+```{r}
+fviz_pca_biplot(pca_res,
+                label = "var",
+                habillage = as.factor(metabric_clean$PAM50),
+                addEllipses = TRUE,
+                col.var = "red",
+                alpha.ind = 0.5) +
+  theme_minimal()
+```
+
+## Clustering
+
+```{r}
+# K-means clustering on first two PCs
+set.seed(42)
+km_res <- kmeans(pca_res$x[,1:2], centers = 4, nstart = 25)
+
+# Visualise clusters
+fviz_cluster(km_res, data = pca_res$x[,1:2], palette = "jco", ggtheme = theme_minimal())
+```
+
+## Survival Analysis
+
+### Kaplan-Meier Curves
+
+```{r}
+# Create survival object
+# Status: 0=Living, 1=Deceased (simplified for demo)
+metabric_clean <- metabric_clean %>%
+  mutate(status = if_else(Survival_status == "DECEASED", 1, 0))
+
+fit <- survfit(Surv(Survival_time, status) ~ PAM50, data = metabric_clean)
+
+ggsurvplot(fit, data = metabric_clean, pval = TRUE, title = "Survival by PAM50 Subtype")
+```
+
+### Cox Proportional Hazards Model
+
+```{r}
+cox_fit <- coxph(Surv(Survival_time, status) ~ Tumour_size + Tumour_stage + Age_at_diagnosis, data = metabric_clean)
+summary(cox_fit)
+```
+
+## Summary
+
+- PCA identified clear distinctions between LumA/B and Basal subtypes.
+- Survival analysis confirmed that clinical features like tumour size and stage, along with molecular subtype, are significant predictors of outcome.

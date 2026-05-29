@@ -1,0 +1,55 @@
+---
+title: "Multiple Subplots and Layouts in R"
+output: html_document
+---
+
+# Multiple Subplots and Layouts
+
+In R, there are several ways to arrange multiple plots. The most idiomatic way is through **Faceting** (splitting one plot by a variable) or using layout packages like `ggpubr` or `patchwork`.
+
+```{r setup, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(ggpubr)
+```
+
+## Faceting: Subplots by Data
+
+Faceting automatically creates a grid of subplots based on a categorical variable.
+
+```{r}
+# Using the built-in mpg dataset
+ggplot(mpg, aes(x = displ, y = hwy)) +
+  geom_point() +
+  facet_wrap(~class, ncol = 3) +
+  theme_bw()
+```
+
+## Arranging Independent Plots
+
+If you have separate plot objects, you can arrange them using `ggarrange` from the `ggpubr` package.
+
+```{r}
+p1 <- ggplot(mpg, aes(x = displ, y = hwy)) + geom_point() + theme_minimal()
+p2 <- ggplot(mpg, aes(x = drv, y = hwy, fill = drv)) + geom_boxplot() + theme_minimal()
+p3 <- ggplot(mpg, aes(x = hwy)) + geom_histogram(bins = 20) + theme_minimal()
+
+# Arrange in a grid
+ggarrange(p1, p2, p3, ncol = 2, nrow = 2, labels = c("A", "B", "C"))
+```
+
+## Grid Layouts with `facet_grid`
+
+`facet_grid` is useful when you want to split subplots by two variables.
+
+```{r}
+ggplot(mpg, aes(x = displ, y = hwy)) +
+  geom_point() +
+  facet_grid(drv ~ cyl) +
+  theme_light()
+```
+
+## Summary
+
+-   **Faceting:** Use `facet_wrap()` for one variable and `facet_grid()` for two.
+-   **Layouts:** Use `ggpubr::ggarrange()` to combine different types of plots into one figure.
+-   **Consistency:** Subplots created via faceting automatically share axes and scales, ensuring visual consistency.

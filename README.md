@@ -29,15 +29,12 @@ Many biologists and life scientists work primarily in R, using it for bioinforma
 ```
 data-science-for-biologists-AZ/
 │
-├── notebooks_R/          ← R Markdown lecture & solution files (weeks 0–7)
+├── notebooks/            ← R Markdown lecture & solution files (weeks 0–7)
 │   └── week2_extra_DataVisualisation/  ← 15 supplementary ggplot2 notebooks
 │
-├── challenge_R/          ← Student project examples in R
+├── challenge/            ← Student project examples in R
 │   ├── KatarzynaNurzynska/
 │   └── RobertShaw/
-│
-├── notebooks/            ← Original Python notebooks (kept for reference)
-├── challenge/            ← Original Python student challenges (kept for reference)
 │
 ├── data/                 ← Shared datasets used across all weeks
 │   ├── metabric_clinical_and_expression_data.csv   ← Primary teaching dataset
@@ -116,7 +113,7 @@ cd data-science-for-biologists-AZ
 ### Open and Run a Notebook
 
 1. Open RStudio
-2. Navigate to `notebooks_R/`
+2. Navigate to `notebooks/`
 3. Open any `.Rmd` file (e.g., `week1_lecture.Rmd`)
 4. Click **Knit** to render it to HTML, or run chunks interactively
 
@@ -130,7 +127,7 @@ source("render_all.R")
 
 ## Student Challenges
 
-The `challenge_R/` folder contains real student project submissions that were adapted to R. These demonstrate how to apply course concepts to custom datasets:
+The `challenge/` folder contains real student project submissions that were adapted to R. These demonstrate how to apply course concepts to custom datasets:
 
 - **KatarzynaNurzynska** — METABRIC survival and subtype analysis (`week8_Metabric_data_analysis.Rmd`)
 - **RobertShaw** — Particle size data processing and reporting (`G3_example_DEMO.Rmd`)

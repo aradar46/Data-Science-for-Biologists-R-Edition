@@ -1,0 +1,95 @@
+---
+title: "Histograms, Binnings, and Density in R"
+output: html_document
+---
+
+# Histograms, Binnings, and Density
+
+A simple histogram can be a great first step in understanding a dataset. In R, we use `ggplot2` for both 1D and 2D distribution analysis.
+
+```{r setup, message=FALSE, warning=FALSE}
+library(tidyverse)
+```
+
+## Basic Histograms
+
+In `ggplot2`, we use `geom_histogram()` to visualize the distribution of a continuous variable.
+
+```{r}
+set.seed(0)
+df <- tibble(data = rnorm(1000))
+
+ggplot(df, aes(x = data)) +
+  geom_histogram(bins = 30, fill = "steelblue", color = "white") +
+  theme_minimal()
+```
+
+## Comparing Multiple Distributions
+
+We can compare multiple distributions by mapping a grouping variable to the `fill` aesthetic and using transparency (`alpha`).
+
+```{r}
+df_multi <- tibble(
+  group = rep(c("A", "B", "C"), each = 1000),
+  value = c(rnorm(1000, 0, 0.8), rnorm(1000, -2, 1), rnorm(1000, 3, 2))
+)
+
+ggplot(df_multi, aes(x = value, fill = group)) +
+  geom_histogram(bins = 40, alpha = 0.4, position = "identity") +
+  theme_classic()
+```
+
+## Density Plots (KDE)
+
+`geom_density()` provides a smooth estimate of the distribution, equivalent to Kernel Density Estimation.
+
+```{r}
+ggplot(df_multi, aes(x = value, fill = group)) +
+  geom_density(alpha = 0.3) +
+  theme_minimal()
+```
+
+## Two-Dimensional Histograms and Binnings
+
+Just as we create histograms in one dimension, we can also create them in two dimensions.
+
+```{r}
+# Generate multivariate normal data
+library(MASS)
+set.seed(42)
+mu <- c(0, 0)
+Sigma <- matrix(c(1, 1, 1, 2), 2)
+df_2d <- as_tibble(mvrnorm(10000, mu, Sigma))
+colnames(df_2d) <- c("x", "y")
+
+# 2D Histogram
+ggplot(df_2d, aes(x = x, y = y)) +
+  geom_bin2d(bins = 30) +
+  scale_fill_viridis_c() +
+  theme_bw()
+```
+
+### Hexagonal Binnings
+
+Hexagonal bins are often preferred for 2D distributions as they minimize visual artifacts.
+
+```{r}
+ggplot(df_2d, aes(x = x, y = y)) +
+  geom_hex(bins = 30) +
+  scale_fill_viridis_c() +
+  theme_minimal()
+```
+
+### 2D Density Contours
+
+```{r}
+ggplot(df_2d, aes(x = x, y = y)) +
+  geom_density_2d_filled() +
+  theme_minimal()
+```
+
+## Summary
+
+-   **1D Distributions:** Use `geom_histogram()` or `geom_density()`.
+-   **2D Distributions:** Use `geom_bin2d()`, `geom_hex()`, or `geom_density_2d()`.
+-   **Tuning:** Use `bins`, `binwidth`, and `alpha` to control the granularity and visibility of your plots.

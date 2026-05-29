@@ -1,0 +1,48 @@
+---
+title: "Three-Dimensional Plotting in R"
+output: html_document
+---
+
+# Three-Dimensional Plotting
+
+While 2D plots are standard, sometimes 3D visualization is necessary to explore complex relationships. In R, we often use `plotly` for interactive 3D plots or base R's `persp()`.
+
+```{r setup, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(plotly)
+```
+
+## 3.1 3D Scatter Plots
+
+With `plotly`, we can create interactive 3D scatter plots where you can rotate and zoom to explore the data.
+
+```{r}
+# Using the built-in iris dataset
+plot_ly(iris, x = ~Sepal.Length, y = ~Sepal.Width, z = ~Petal.Length,
+        color = ~Species, type = "scatter3d", mode = "markers")
+```
+
+## 3.2 3D Surface Plots
+
+We can visualize a mathematical function or a grid of data as a 3D surface.
+
+```{r}
+# Define a function
+f <- function(x, y) {
+  sin(sqrt(x^2 + y^2))
+}
+
+# Create a grid
+x <- seq(-8, 8, length.out = 50)
+y <- seq(-8, 8, length.out = 50)
+z <- outer(x, y, f)
+
+# Surface plot
+plot_ly(z = ~z, type = "surface")
+```
+
+## Summary
+
+-   **Interactive Exploration:** `plotly` is the go-to package for interactive 3D visualization in R.
+-   **Static 3D:** Packages like `plot3D` or base R's `persp()` can be used for static publications.
+-   **Caution:** 3D plots can be difficult to interpret; always consider if a 2D faceted plot or heatmap would convey the information more clearly.
