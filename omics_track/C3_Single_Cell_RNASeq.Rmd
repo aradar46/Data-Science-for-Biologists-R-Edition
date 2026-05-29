@@ -1,0 +1,64 @@
+---
+title: "C3 - Single-Cell RNA-Seq Basics"
+output: html_document
+---
+
+# C3 - Single-Cell RNA-Seq Basics
+
+## Useful References
+- [Seurat Vignettes](https://satijalab.org/seurat/articles/pbmc3k_tutorial.html)
+- [Orchestrating Single-Cell Analysis with Bioconductor](https://bioconductor.org/books/release/OSCA/)
+
+## Learning Objectives
+In this session we will cover:
+- How single-cell data differs from bulk RNA-Seq (sparsity / dropouts).
+- Using `Seurat` to create cell objects.
+- Doing dimensionality reduction (UMAP) to find distinct cell populations.
+
+## Bulk vs Single-Cell
+In bulk RNA-Seq (C1), you blend a million cells into a smoothie and measure the average. Single-cell RNA-Seq measures the exact gene expression of *each individual cell*, allowing you to discover brand new tiny subpopulations of immune cells or neurons that the average "smoothie" hid.
+
+## Setup
+We use `Seurat`, the foundational tool for scRNA-Seq in R.
+```{r setup, eval=FALSE}
+library(Seurat)
+library(tidyverse)
+
+# Assuming you loaded a raw sparse matrix from 10X Genomics
+pbmc.data <- Read10X(data.dir = "filtered_gene_bc_matrices/hg19/")
+
+# Initialize the Seurat object
+pbmc <- CreateSeuratObject(counts = pbmc.data, project = "PBMC_Tutorial", min.cells = 3, min.features = 200)
+```
+
+## Quality Control & Normalization
+scRNA-Seq cells frequently "die" in the machine. A hallmark of dead cells is high mitochondrial gene percent.
+
+```{r qc, eval=FALSE}
+# Find mitochondrial percentage
+pbmc[["percent.mt"]] <- PercentageFeatureSet(pbmc, pattern = "^MT-")
+
+# Filter out dead cells
+pbmc <- subset(pbmc, subset = nFeature_RNA > 200 & nFeature_RNA < 2500 & percent.mt < 5)
+
+# Normalize the counts for sequencing depth
+pbmc <- NormalizeData(pbmc)
+```
+
+## Discovering Cell Populations
+Finally, we use UMAP to visualize high-dimensional data in 2D space. Cells that are transcriptionally identical form distinct clusters. 
+
+```{r umap, eval=FALSE}
+pbmc <- FindVariableFeatures(pbmc)
+pbmc <- ScaleData(pbmc)
+pbmc <- RunPCA(pbmc)
+
+# Find clusters using K-nearest neighbors graph
+pbmc <- FindNeighbors(pbmc, dims = 1:10)
+pbmc <- FindClusters(pbmc, resolution = 0.5)
+
+# Run UMAP to project it in 2D
+pbmc <- RunUMAP(pbmc, dims = 1:10)
+
+DimPlot(pbmc, reduction = "umap")
+```

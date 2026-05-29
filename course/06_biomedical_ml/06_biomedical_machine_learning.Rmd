@@ -1,0 +1,444 @@
+---
+title: "Module 6 - Biomedical Machine Learning"
+output:
+  html_document:
+    toc: true
+    toc_depth: 2
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  message = FALSE,
+  warning = FALSE,
+  fig.width = 8,
+  fig.height = 5
+)
+
+set.seed(42)
+```
+
+# Biological Question
+
+How do we build high-dimensional biomedical prediction models while controlling leakage, class imbalance, overfitting, and overinterpretation?
+
+# Learning Objectives
+
+By the end of this module, learners should be able to:
+
+- explain why high-dimensional omics data increases overfitting risk,
+- create leakage-safe train/test splits for matched clinical and omics data,
+- fit and tune an elastic net model for high-dimensional predictors,
+- evaluate imbalanced biomedical classifiers with ROC AUC and PR AUC,
+- apply imbalance handling inside a recipe,
+- perform training-only feature filtering,
+- inspect model calibration and feature importance cautiously,
+- write a short model card with limitations.
+
+# Prerequisites
+
+- Module 2: data wrangling and validation.
+- Module 5: modeling foundations with `tidymodels`.
+- Packages: `tidyverse`, `here`, `tidymodels`, `glmnet`, `ranger`, `themis`, `vip`.
+- Datasets: `data/clinical.csv`, `data/omics.csv`.
+
+# Setup
+
+```{r packages}
+library(tidyverse)
+library(here)
+library(tidymodels)
+library(glmnet)
+library(ranger)
+library(themis)
+library(vip)
+
+tidymodels_prefer()
+```
+
+# Data Input and Validation
+
+The capstone clinical dataset contains time-to-event data. In this module we temporarily create a binary label, "Event" versus "Censored", to teach high-dimensional classification mechanics.
+
+This is a simplification. Censored patients are not "no event forever"; they are patients whose event was not observed during follow-up. A proper survival model is required for final time-to-event analysis.
+
+```{r data-input}
+clinical <- read_csv(here("data", "clinical.csv"), show_col_types = FALSE)
+omics <- read_csv(here("data", "omics.csv"), show_col_types = FALSE)
+
+stopifnot(!anyDuplicated(clinical$patientID))
+stopifnot(!anyDuplicated(omics$patientID))
+stopifnot(setequal(clinical$patientID, omics$patientID))
+
+omics_aligned <- omics %>%
+  slice(match(clinical$patientID, patientID))
+
+stopifnot(identical(clinical$patientID, omics_aligned$patientID))
+```
+
+# Build the Modeling Table
+
+Do not use `time` as a predictor for this binary classifier. Follow-up time is part of the outcome process and would leak outcome information.
+
+```{r modeling-table}
+modeling_data <- clinical %>%
+  transmute(
+    patientID,
+    event_status = factor(
+      if_else(status == 1, "Event", "Censored"),
+      levels = c("Censored", "Event")
+    ),
+    treatment_group = factor(
+      treatment,
+      levels = c(0, 1),
+      labels = c("Standard of care", "Standard + chemotherapy")
+    )
+  ) %>%
+  left_join(omics_aligned, by = "patientID")
+
+modeling_data %>%
+  count(event_status, name = "patients") %>%
+  mutate(fraction = patients / sum(patients))
+```
+
+# High-Dimensional Risk
+
+This dataset has many more molecular predictors than a basic clinical model.
+
+```{r dimensionality}
+tibble(
+  patients = nrow(modeling_data),
+  predictors = ncol(modeling_data) - 2,
+  expression_probes = ncol(omics) - 1,
+  event_fraction = mean(modeling_data$event_status == "Event")
+)
+```
+
+High-dimensional models can look impressive while learning noise. Validation and leakage control matter more than model complexity.
+
+# Stratified Train/Test Split
+
+The test set is held out until final evaluation.
+
+```{r split}
+set.seed(42)
+event_split <- initial_split(modeling_data, prop = 0.8, strata = event_status)
+event_train <- training(event_split)
+event_test <- testing(event_split)
+
+bind_rows(
+  train = event_train %>% count(event_status),
+  test = event_test %>% count(event_status),
+  .id = "split"
+)
+```
+
+# Baseline Classifier
+
+Always compare against a simple baseline. For imbalanced data, a model can have high accuracy by mostly predicting the majority class.
+
+```{r baseline}
+majority_class <- event_train %>%
+  count(event_status, sort = TRUE) %>%
+  slice(1) %>%
+  pull(event_status)
+
+baseline_predictions <- event_test %>%
+  transmute(
+    event_status,
+    .pred_class = factor(majority_class, levels = levels(event_status)),
+    .pred_Event = if_else(.pred_class == "Event", 1, 0),
+    .pred_Censored = 1 - .pred_Event
+  )
+
+tibble(
+  metric = c("accuracy", "balanced accuracy", "ROC AUC", "PR AUC"),
+  estimate = c(
+    accuracy(baseline_predictions, event_status, .pred_class)$.estimate,
+    bal_accuracy(baseline_predictions, event_status, .pred_class)$.estimate,
+    roc_auc(baseline_predictions, event_status, .pred_Event, event_level = "second")$.estimate,
+    pr_auc(baseline_predictions, event_status, .pred_Event, event_level = "second")$.estimate
+  )
+)
+```
+
+# Elastic Net for High-Dimensional Data
+
+Elastic net regularization is useful when predictors are numerous and correlated. It combines lasso-like feature selection with ridge-like shrinkage.
+
+```{r elastic-net-recipe}
+elastic_recipe <- recipe(event_status ~ ., data = event_train) %>%
+  update_role(patientID, new_role = "id") %>%
+  step_impute_mode(all_nominal_predictors()) %>%
+  step_dummy(all_nominal_predictors()) %>%
+  step_zv(all_predictors()) %>%
+  step_normalize(all_numeric_predictors())
+
+elastic_spec <- logistic_reg(
+  penalty = tune(),
+  mixture = tune()
+) %>%
+  set_engine("glmnet") %>%
+  set_mode("classification")
+
+elastic_workflow <- workflow() %>%
+  add_recipe(elastic_recipe) %>%
+  add_model(elastic_spec)
+```
+
+# Cross-Validation and Tuning
+
+Tuning is performed only on the training set. The test set remains untouched.
+
+```{r elastic-net-tuning}
+set.seed(42)
+event_folds <- vfold_cv(event_train, v = 5, strata = event_status)
+
+elastic_grid <- grid_regular(
+  penalty(range = c(-4, -1)),
+  mixture(range = c(0, 1)),
+  levels = c(5, 3)
+)
+
+set.seed(42)
+elastic_tune <- tune_grid(
+  elastic_workflow,
+  resamples = event_folds,
+  grid = elastic_grid,
+  metrics = metric_set(roc_auc, pr_auc, accuracy, bal_accuracy)
+)
+
+collect_metrics(elastic_tune) %>%
+  arrange(.metric, desc(mean)) %>%
+  group_by(.metric) %>%
+  slice_head(n = 3) %>%
+  ungroup()
+```
+
+```{r final-elastic-net}
+best_elastic <- select_best(elastic_tune, metric = "roc_auc")
+
+final_elastic_workflow <- finalize_workflow(elastic_workflow, best_elastic)
+final_elastic_fit <- fit(final_elastic_workflow, data = event_train)
+
+elastic_predictions <- predict(final_elastic_fit, event_test, type = "prob") %>%
+  bind_cols(predict(final_elastic_fit, event_test, type = "class")) %>%
+  bind_cols(event_test %>% select(patientID, event_status))
+
+tibble(
+  metric = c("accuracy", "balanced accuracy", "ROC AUC", "PR AUC"),
+  estimate = c(
+    accuracy(elastic_predictions, event_status, .pred_class)$.estimate,
+    bal_accuracy(elastic_predictions, event_status, .pred_class)$.estimate,
+    roc_auc(elastic_predictions, event_status, .pred_Event, event_level = "second")$.estimate,
+    pr_auc(elastic_predictions, event_status, .pred_Event, event_level = "second")$.estimate
+  )
+)
+```
+
+# ROC and Precision-Recall Curves
+
+ROC AUC can look reasonable even when the minority class is hard to identify. Precision-recall curves are often more informative for rare biomedical outcomes.
+
+```{r roc-pr-curves}
+roc_plot <- elastic_predictions %>%
+  roc_curve(event_status, .pred_Event, event_level = "second") %>%
+  autoplot() +
+  labs(title = "Elastic net ROC curve") +
+  theme_minimal()
+
+pr_plot <- elastic_predictions %>%
+  pr_curve(event_status, .pred_Event, event_level = "second") %>%
+  autoplot() +
+  labs(title = "Elastic net precision-recall curve") +
+  theme_minimal()
+
+roc_plot
+pr_plot
+```
+
+# Calibration Check
+
+Calibration asks whether predicted probabilities match observed event fractions. This quick binning plot is a diagnostic, not a full calibration study.
+
+```{r calibration}
+calibration_table <- elastic_predictions %>%
+  mutate(probability_bin = ntile(.pred_Event, 6)) %>%
+  group_by(probability_bin) %>%
+  summarise(
+    patients = n(),
+    mean_predicted_event_probability = mean(.pred_Event),
+    observed_event_fraction = mean(event_status == "Event"),
+    .groups = "drop"
+  )
+
+calibration_table
+```
+
+```{r calibration-plot}
+calibration_table %>%
+  ggplot(aes(x = mean_predicted_event_probability, y = observed_event_fraction)) +
+  geom_point(size = 3, color = "#33658A") +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "grey50") +
+  coord_equal(xlim = c(0, 1), ylim = c(0, 1)) +
+  labs(
+    title = "Calibration check for elastic net event classifier",
+    x = "Mean predicted event probability",
+    y = "Observed event fraction"
+  ) +
+  theme_minimal()
+```
+
+# Interpreting Elastic Net Coefficients
+
+Nonzero coefficients identify model-selected predictors. They do not prove biological causality.
+
+```{r nonzero-coefficients}
+elastic_coefficients <- final_elastic_fit %>%
+  extract_fit_parsnip() %>%
+  tidy() %>%
+  filter(term != "(Intercept)", estimate != 0) %>%
+  arrange(desc(abs(estimate)))
+
+elastic_coefficients %>%
+  slice_head(n = 15)
+```
+
+# Imbalance Handling Inside the Workflow
+
+If using sampling methods such as SMOTE, apply them inside the recipe so they happen only inside training folds. Never SMOTE the full dataset before splitting.
+
+To keep rendering fast, this example uses a training-only set of high-variance probes before fitting a random forest. The feature screen is computed from the training set only.
+
+```{r training-only-feature-filter}
+probe_columns <- setdiff(names(omics), "patientID")
+
+top_train_probes <- event_train %>%
+  select(all_of(probe_columns)) %>%
+  summarise(across(everything(), sd)) %>%
+  pivot_longer(everything(), names_to = "probe", values_to = "sd") %>%
+  arrange(desc(sd)) %>%
+  slice_head(n = 100) %>%
+  pull(probe)
+
+rf_train <- event_train %>%
+  select(patientID, event_status, treatment_group, all_of(top_train_probes))
+
+rf_test <- event_test %>%
+  select(patientID, event_status, treatment_group, all_of(top_train_probes))
+```
+
+```{r smote-rf}
+rf_recipe <- recipe(event_status ~ ., data = rf_train) %>%
+  update_role(patientID, new_role = "id") %>%
+  step_dummy(all_nominal_predictors()) %>%
+  step_zv(all_predictors()) %>%
+  step_normalize(all_numeric_predictors()) %>%
+  step_smote(event_status, over_ratio = 0.8)
+
+rf_spec <- rand_forest(
+  mtry = 20,
+  min_n = 10,
+  trees = 200
+) %>%
+  set_engine("ranger", importance = "permutation") %>%
+  set_mode("classification")
+
+rf_workflow <- workflow() %>%
+  add_recipe(rf_recipe) %>%
+  add_model(rf_spec)
+
+set.seed(42)
+rf_fit <- fit(rf_workflow, data = rf_train)
+
+rf_predictions <- predict(rf_fit, rf_test, type = "prob") %>%
+  bind_cols(predict(rf_fit, rf_test, type = "class")) %>%
+  bind_cols(rf_test %>% select(patientID, event_status))
+
+tibble(
+  model = c("elastic net", "SMOTE random forest"),
+  roc_auc = c(
+    roc_auc(elastic_predictions, event_status, .pred_Event, event_level = "second")$.estimate,
+    roc_auc(rf_predictions, event_status, .pred_Event, event_level = "second")$.estimate
+  ),
+  pr_auc = c(
+    pr_auc(elastic_predictions, event_status, .pred_Event, event_level = "second")$.estimate,
+    pr_auc(rf_predictions, event_status, .pred_Event, event_level = "second")$.estimate
+  ),
+  balanced_accuracy = c(
+    bal_accuracy(elastic_predictions, event_status, .pred_class)$.estimate,
+    bal_accuracy(rf_predictions, event_status, .pred_class)$.estimate
+  )
+)
+```
+
+# Random Forest Importance
+
+Feature importance is useful for model inspection, but it is not a ranked list of therapeutic targets.
+
+```{r rf-importance}
+rf_fit %>%
+  extract_fit_parsnip() %>%
+  vip(num_features = 12) +
+  labs(title = "Random forest variable importance")
+```
+
+# Model Card
+
+A short model card makes limitations explicit.
+
+| Field | Current model |
+|---|---|
+| Target | Observed event vs censored status |
+| Unit of analysis | Patient |
+| Predictors | Treatment group and microarray probe intensities |
+| Main risk | Censoring is simplified as binary classification |
+| Validation | Internal train/test split only |
+| Metrics | ROC AUC, PR AUC, balanced accuracy, calibration bins |
+| Not supported | Clinical deployment, causal claims, survival risk estimation |
+
+# Interpretation Checkpoint
+
+Before trusting any biomedical ML model, answer:
+
+- Was feature selection done only inside training data?
+- Was the test set untouched until final evaluation?
+- Is the outcome label biologically and clinically valid?
+- Is class imbalance addressed with metrics and, if needed, training-only sampling?
+- Are predictors available at the time prediction would be made?
+- Has the model been externally validated?
+- Are feature-importance claims stated as prediction, not mechanism?
+
+# Common Failure Modes
+
+- Selecting genes on the full dataset before splitting.
+- SMOTE or downsampling before train/test split.
+- Treating censored patients as true non-events without caveats.
+- Reporting accuracy for imbalanced outcomes.
+- Confusing internal cross-validation with external validation.
+- Treating elastic net selected features as causal biology.
+- Forgetting that assay platform and batch can dominate molecular predictors.
+
+# Exercises
+
+1. Refit the elastic net using `pr_auc` instead of `roc_auc` for model selection. Compare the chosen penalty and mixture.
+2. Remove `treatment_group` from the model and observe whether performance changes.
+3. Change the number of training-selected probes for the random forest from 100 to 50 and compare PR AUC.
+4. Write a leakage checklist for a high-dimensional omics classifier.
+5. Write a model card paragraph that explains why this binary event classifier is not a proper survival model.
+
+# Key Takeaways
+
+- High-dimensional biomedical ML is mostly a validation problem.
+- Elastic net is a practical baseline for many correlated molecular predictors.
+- Imbalanced outcomes need PR AUC, balanced accuracy, and threshold thinking, not accuracy alone.
+- Sampling methods must occur inside training resamples.
+- Feature selection must be training-only.
+- Predictive features are not automatically biological mechanisms.
+- Censored survival outcomes should eventually be modeled with survival methods.
+
+# Reproducibility
+
+```{r session-info}
+sessionInfo()
+```

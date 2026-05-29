@@ -1,0 +1,356 @@
+---
+title: "Module 3 - Visualization for Biology"
+output:
+  html_document:
+    toc: true
+    toc_depth: 2
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  message = FALSE,
+  warning = FALSE,
+  fig.width = 8,
+  fig.height = 5
+)
+
+set.seed(42)
+```
+
+# Biological Question
+
+How do we choose plots that reveal biological structure, data quality problems, and uncertainty without overstating what the data can support?
+
+# Learning Objectives
+
+By the end of this module, learners should be able to:
+
+- choose plot types based on variable type and biological question,
+- visualize distributions, group differences, and missingness,
+- create expression heatmaps and PCA plots,
+- plot survival curves for time-to-event data,
+- build volcano-style plots for effect size and significance,
+- write captions that distinguish observation from interpretation.
+
+# Prerequisites
+
+- Module 1: R foundations.
+- Module 2: data wrangling and validation.
+- Packages: `tidyverse`, `here`, `survival`, `survminer`, `pheatmap`, `broom`.
+- Datasets: METABRIC, `clinical.csv`, `omics.csv`.
+
+# Setup
+
+```{r packages}
+library(tidyverse)
+library(here)
+library(survival)
+library(survminer)
+library(pheatmap)
+library(broom)
+```
+
+# Data Input and Validation
+
+```{r data-input}
+metabric <- read_csv(
+  here("data", "metabric_clinical_and_expression_data.csv"),
+  show_col_types = FALSE
+)
+
+clinical <- read_csv(
+  here("data", "clinical.csv"),
+  show_col_types = FALSE
+) %>%
+  mutate(
+    treatment_group = factor(
+      treatment,
+      levels = c(0, 1),
+      labels = c("Standard of care", "Standard + chemotherapy")
+    ),
+    event_status = factor(
+      status,
+      levels = c(0, 1),
+      labels = c("Censored", "Event")
+    )
+  )
+
+omics <- read_csv(
+  here("data", "omics.csv"),
+  show_col_types = FALSE
+)
+
+stopifnot(!anyDuplicated(clinical$patientID))
+stopifnot(!anyDuplicated(omics$patientID))
+stopifnot(setequal(clinical$patientID, omics$patientID))
+```
+
+# Plot Choice Depends on Variable Type
+
+| Biological question | Data shape | Useful plot |
+|---|---|---|
+| How old are patients at diagnosis? | one numeric variable | histogram or density |
+| Do subtypes differ in tumor size? | numeric by category | boxplot plus points |
+| Which values are missing? | variables by missingness | bar plot |
+| Do samples cluster by treatment? | many molecular features | PCA plot |
+| Does survival differ by group? | time-to-event outcome | Kaplan-Meier curve |
+| Which features have large effects? | effect and p-value per feature | volcano-style plot |
+
+# Distribution Plot
+
+Use distributions to see range, skew, outliers, and impossible values.
+
+```{r age-distribution}
+metabric %>%
+  ggplot(aes(x = Age_at_diagnosis)) +
+  geom_histogram(bins = 35, fill = "#33658A", color = "white") +
+  labs(
+    title = "Age at diagnosis in METABRIC",
+    x = "Age at diagnosis",
+    y = "Patients"
+  ) +
+  theme_minimal()
+```
+
+# Group Comparisons
+
+Boxplots summarize distributions, but points reveal sample size and spread. Use both when possible.
+
+```{r tumor-size-by-pam50}
+metabric %>%
+  filter(!is.na(PAM50), !is.na(Tumour_size)) %>%
+  ggplot(aes(x = PAM50, y = Tumour_size, fill = PAM50)) +
+  geom_boxplot(outlier.shape = NA, alpha = 0.75) +
+  geom_jitter(width = 0.15, alpha = 0.25, size = 0.8) +
+  coord_cartesian(ylim = c(0, 120)) +
+  labs(
+    title = "Tumor size by PAM50 subtype",
+    x = "PAM50 subtype",
+    y = "Tumor size"
+  ) +
+  theme_minimal() +
+  theme(legend.position = "none")
+```
+
+# Missingness Plot
+
+Missingness is a data quality signal. Plot it before deciding how to handle it.
+
+```{r missingness-plot}
+metabric %>%
+  summarise(across(everything(), ~ mean(is.na(.x)))) %>%
+  pivot_longer(everything(), names_to = "column", values_to = "fraction_missing") %>%
+  filter(fraction_missing > 0) %>%
+  arrange(fraction_missing) %>%
+  mutate(column = factor(column, levels = column)) %>%
+  ggplot(aes(x = fraction_missing, y = column)) +
+  geom_col(fill = "#7A5195") +
+  scale_x_continuous(labels = scales::percent) +
+  labs(
+    title = "METABRIC columns with missing values",
+    x = "Missing values",
+    y = NULL
+  ) +
+  theme_minimal()
+```
+
+# Expression Heatmap
+
+Heatmaps are useful for visualizing expression patterns across samples and features. They are not statistical tests by themselves.
+
+```{r heatmap-data}
+omics_aligned <- omics %>%
+  slice(match(clinical$patientID, patientID))
+
+stopifnot(identical(clinical$patientID, omics_aligned$patientID))
+
+expression_matrix <- omics_aligned %>%
+  select(-patientID) %>%
+  as.matrix()
+
+variable_probes <- apply(expression_matrix, 2, sd) %>%
+  sort(decreasing = TRUE) %>%
+  head(25) %>%
+  names()
+
+heatmap_matrix <- expression_matrix[1:60, variable_probes]
+heatmap_matrix <- t(scale(heatmap_matrix))
+
+annotation_col <- clinical %>%
+  slice(1:60) %>%
+  select(treatment_group, event_status) %>%
+  as.data.frame()
+
+rownames(annotation_col) <- clinical$patientID[1:60]
+colnames(heatmap_matrix) <- clinical$patientID[1:60]
+```
+
+```{r expression-heatmap}
+pheatmap(
+  heatmap_matrix,
+  annotation_col = annotation_col,
+  show_colnames = FALSE,
+  show_rownames = FALSE,
+  main = "Top variable expression probes across first 60 patients"
+)
+```
+
+# PCA Plot
+
+PCA is a visualization tool for high-dimensional structure. Here we use the most variable expression probes to inspect whether samples show broad grouping patterns.
+
+```{r pca-plot}
+top_pca_probes <- apply(expression_matrix, 2, sd) %>%
+  sort(decreasing = TRUE) %>%
+  head(200) %>%
+  names()
+
+pca_input <- expression_matrix[, top_pca_probes]
+pca_result <- prcomp(pca_input, center = TRUE, scale. = TRUE)
+
+pca_scores <- as_tibble(pca_result$x[, 1:2]) %>%
+  mutate(
+    patientID = clinical$patientID,
+    treatment_group = clinical$treatment_group,
+    event_status = clinical$event_status
+  )
+
+variance_explained <- summary(pca_result)$importance["Proportion of Variance", 1:2]
+
+pca_scores %>%
+  ggplot(aes(x = PC1, y = PC2, color = treatment_group, shape = event_status)) +
+  geom_point(alpha = 0.8, size = 2) +
+  labs(
+    title = "PCA of top variable expression probes",
+    x = paste0("PC1 (", scales::percent(variance_explained[[1]], accuracy = 0.1), ")"),
+    y = paste0("PC2 (", scales::percent(variance_explained[[2]], accuracy = 0.1), ")"),
+    color = "Treatment",
+    shape = "Status"
+  ) +
+  theme_minimal()
+```
+
+# Survival Curve
+
+Time-to-event outcomes need survival-specific plots because censored patients still provide partial information.
+
+```{r survival-curve}
+km_fit <- survfit(Surv(time, status) ~ treatment_group, data = clinical)
+
+ggsurvplot(
+  km_fit,
+  data = clinical,
+  pval = TRUE,
+  risk.table = TRUE,
+  title = "Kaplan-Meier survival by treatment group",
+  xlab = "Time",
+  ylab = "Survival probability"
+)
+```
+
+# Volcano-Style Plot
+
+Volcano plots combine effect size and statistical evidence. This example uses simple per-probe linear models for teaching visualization mechanics, not a final omics analysis.
+
+```{r volcano-data}
+selected_for_demo <- apply(expression_matrix, 2, sd) %>%
+  sort(decreasing = TRUE) %>%
+  head(300) %>%
+  names()
+
+volcano_results <- map_dfr(selected_for_demo, function(probe_id) {
+  probe_df <- tibble(
+    expression = expression_matrix[, probe_id],
+    treatment_group = clinical$treatment_group
+  )
+
+  fit <- lm(expression ~ treatment_group, data = probe_df)
+
+  tidy(fit) %>%
+    filter(term != "(Intercept)") %>%
+    transmute(
+      probe_id = probe_id,
+      estimate = estimate,
+      p_value = p.value
+    )
+}) %>%
+  mutate(
+    adjusted_p = p.adjust(p_value, method = "BH"),
+    neg_log10_p = -log10(p_value),
+    significant = adjusted_p < 0.05
+  )
+
+volcano_results %>%
+  slice_min(adjusted_p, n = 8)
+```
+
+```{r volcano-plot}
+volcano_results %>%
+  ggplot(aes(x = estimate, y = neg_log10_p, color = significant)) +
+  geom_point(alpha = 0.7) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "grey50") +
+  scale_color_manual(values = c("FALSE" = "grey55", "TRUE" = "#D1495B")) +
+  labs(
+    title = "Volcano-style display for treatment-associated probes",
+    subtitle = "Teaching example using top variable probes and simple linear models",
+    x = "Estimated expression difference",
+    y = "-log10(p-value)",
+    color = "FDR < 0.05"
+  ) +
+  theme_minimal()
+```
+
+# Figure Captions
+
+A good figure caption states what was plotted, what pattern is visible, and what cannot be concluded.
+
+Weak caption:
+
+> Treatment changes expression.
+
+Better caption:
+
+> Among the 300 most variable probes, this volcano-style plot shows estimated expression differences between treatment groups and nominal statistical evidence. This exploratory display does not establish causal treatment effects and does not account for survival, batch effects, or clinical covariates.
+
+# Interpretation Checkpoint
+
+For each figure, answer:
+
+- What is the unit of analysis?
+- What are the variables and units?
+- What preprocessing occurred before plotting?
+- What pattern is visible?
+- What alternative explanations remain?
+- What conclusion would be too strong?
+
+# Common Failure Modes
+
+- Using a plot because it looks advanced rather than because it answers a question.
+- Hiding sample size or outliers with over-smoothed summaries.
+- Interpreting PCA axes as biological pathways.
+- Treating heatmap clusters as validated subtypes.
+- Using volcano plots as final analysis without design-aware modeling.
+- Writing captions that imply causality from observational or exploratory plots.
+
+# Exercises
+
+1. Plot `Survival_time` in METABRIC and describe its skew.
+2. Create a boxplot of `ESR1` expression by `ER_status`.
+3. Create a missingness plot for only the clinical columns in METABRIC.
+4. Build a PCA plot from 100 expression probes and color points by event status.
+5. Write a careful caption for one plot that includes one limitation.
+
+# Key Takeaways
+
+- Visualization is a scientific decision, not decoration.
+- Plot choice should follow variable type and biological question.
+- High-dimensional plots like heatmaps and PCA are exploratory unless paired with validation.
+- Survival data needs survival-aware visualization.
+- Captions should prevent overinterpretation.
+
+# Reproducibility
+
+```{r session-info}
+sessionInfo()
+```

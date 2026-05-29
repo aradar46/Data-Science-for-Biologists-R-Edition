@@ -1,0 +1,56 @@
+---
+title: "C2 - Pathway Enrichment via GSEA"
+output: html_document
+---
+
+# C2 - Pathway Enrichment (GSEA)
+
+## Useful References
+- [fgsea package](https://bioconductor.org/packages/release/bioc/html/fgsea.html)
+- [MSigDB (Molecular Signatures Database)](https://www.gsea-msigdb.org/gsea/msigdb/index.jsp)
+
+## Learning Objectives
+In this session we will cover:
+- Interpreting a ranked list of genes biologically.
+- Running Gene Set Enrichment Analysis.
+- Visualizing activated biological pathways.
+
+## Why GSEA?
+In lesson C1, we found 500 differentially expressed genes. Biologically, looking at 500 names is useless. We want to know: "Are genes associated with Apoptosis statistically over-represented at the top of my list?" GSEA does exactly that.
+
+## Setup
+We use the fast GSEA package `fgsea` and pre-compiled pathways (e.g. KEGG or Hallmark pathways).
+
+```{r setup, message=FALSE, warning=FALSE}
+library(fgsea)
+library(tidyverse)
+
+# Create a dummy "Ranked List" from DESeq2 log2FoldChange values
+set.seed(42)
+genes <- paste0("Gene_", 1:1000)
+ranked_stats <- setNames(rnorm(1000, 0, 2), genes)
+ranked_stats <- sort(ranked_stats, decreasing = TRUE)
+
+# Create a dummy pathway
+pathways <- list("Apoptosis" = sample(genes, 50),
+                 "Cell_Cycle" = sample(genes, 50))
+```
+
+## Running the Test
+```{r run-gsea}
+# Run fgsea
+fgsea_results <- fgsea(pathways = pathways, 
+                       stats = ranked_stats, 
+                       minSize = 15, 
+                       maxSize = 500)
+
+head(fgsea_results)
+```
+
+## Visualizing the Enrichment Plot
+The classic GSEA Enrichment Plot shows the running sum. If the genes in the pathway are mostly at the top of your list (up-regulated), the line shoots up quickly (Activated Pathway).
+
+```{r plot-gsea}
+plotEnrichment(pathways[["Apoptosis"]], ranked_stats) + 
+  labs(title = "GSEA Enrichment Plot: Apoptosis")
+```

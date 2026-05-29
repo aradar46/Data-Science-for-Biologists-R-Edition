@@ -1,0 +1,40 @@
+---
+title: "B3 - High-Dimensional Modeling (Elastic Net)"
+output: html_document
+---
+
+# B3 - High-Dimensional Modeling
+
+## Useful References
+- [Glmnet Vignette](https://glmnet.stanford.edu/articles/glmnet.html)
+- [Tidymodels: Penalized Regression](https://www.tidymodels.org/learn/models/pls/)
+
+## Learning Objectives
+In this session we will cover:
+- Dealing with $p > n$ (more genes than patients) scenarios.
+- Regularization (Lasso, Ridge, and Elastic Net).
+- Using `tidymodels` to tune hyperparameters.
+
+## The Curse of Dimensionality
+When analyzing omics data, you often have 20,000 genes but only 100 patient samples. Standard linear regression breaks here completely. **Regularization** adds mathematical penalties that shrink non-informative genes' coefficients down exactly to zero (Lasso) or severely penalizes them (Ridge).
+
+## Setup
+We use the `glmnet` engine inside the `tidymodels` framework.
+```{r setup, message=FALSE, warning=FALSE}
+library(tidymodels)
+library(tidyverse)
+# Using a dummy dataset for demonstration where columns >> rows
+```
+
+## Defining the Elastic Net Model
+Elastic net is a combination of Lasso (shrinks coefficients to 0 for feature selection) and Ridge (handles correlated groups of genes).
+
+```{r elastic-net}
+elastic_net_spec <- linear_reg(
+  penalty = tune(), # We will search for the perfect penalty amount
+  mixture = tune()  # Search for the balance between Lasso and Ridge
+) %>% 
+  set_engine("glmnet")
+```
+
+Rather than plugging in numbers randomly, we build a Tuning Grid and use cross-validation folds to mathematically identify the regularisation parameters that predict clinical outcomes most accurately!

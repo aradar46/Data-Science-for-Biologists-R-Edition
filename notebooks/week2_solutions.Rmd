@@ -11,6 +11,7 @@ library(palmerpenguins)
 
 # Load METABRIC data
 metabric <- read_csv("../data/metabric_clinical_and_expression_data.csv")
+penguins <- palmerpenguins::penguins
 
 # Set a clean default theme
 theme_set(theme_minimal())

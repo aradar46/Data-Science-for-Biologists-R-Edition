@@ -1,0 +1,403 @@
+---
+title: "Module 4 - Statistical Reasoning and Experimental Design"
+output:
+  html_document:
+    toc: true
+    toc_depth: 2
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  message = FALSE,
+  warning = FALSE,
+  fig.width = 8,
+  fig.height = 5
+)
+
+set.seed(42)
+```
+
+# Biological Question
+
+How do we decide whether an observed biological pattern is likely to reflect a real association, random variation, confounding, or an artifact of testing many features?
+
+# Learning Objectives
+
+By the end of this module, learners should be able to:
+
+- distinguish estimation, hypothesis testing, and prediction,
+- explain sampling variation using simulation,
+- report effect sizes and confidence intervals,
+- choose simple statistical tests based on variable type and assumptions,
+- use linear models to adjust for covariates,
+- explain why multiple testing correction is essential in omics,
+- identify common experimental design and confounding risks.
+
+# Prerequisites
+
+- Module 2: data wrangling and validation.
+- Module 3: visualization for biology.
+- Packages: `tidyverse`, `here`, `broom`.
+- Dataset: `data/metabric_clinical_and_expression_data.csv`.
+
+# Setup
+
+```{r packages}
+library(tidyverse)
+library(here)
+library(broom)
+```
+
+# Data Input and Validation
+
+```{r data-input}
+metabric <- read_csv(
+  here("data", "metabric_clinical_and_expression_data.csv"),
+  show_col_types = FALSE
+)
+
+required_columns <- c(
+  "Patient_ID",
+  "Age_at_diagnosis",
+  "Survival_time",
+  "Vital_status",
+  "Tumour_size",
+  "Cancer_type",
+  "ER_status",
+  "PAM50",
+  "ESR1",
+  "PGR",
+  "ERBB2",
+  "GATA3",
+  "FOXA1",
+  "MLPH"
+)
+
+stopifnot(all(required_columns %in% names(metabric)))
+stopifnot(!anyDuplicated(metabric$Patient_ID))
+```
+
+For this module we use a complete-case subset only for variables needed in each example. Complete-case filtering should be local to the question, not applied blindly to the entire dataset.
+
+```{r analysis-data}
+er_data <- metabric %>%
+  select(Patient_ID, ER_status, ESR1, PGR, ERBB2, Age_at_diagnosis, Tumour_size, PAM50) %>%
+  drop_na(ER_status, ESR1, PGR, ERBB2, Age_at_diagnosis, Tumour_size)
+
+er_data %>%
+  summarise(
+    patients = n(),
+    er_positive = sum(ER_status == "Positive"),
+    er_negative = sum(ER_status == "Negative")
+  )
+```
+
+# Estimation, Testing, and Prediction
+
+These are different goals:
+
+- Estimation: How large is the difference in ESR1 expression between ER-positive and ER-negative tumors?
+- Hypothesis testing: Is the observed difference larger than expected under a null model?
+- Prediction: Can we predict ER status for a new patient?
+
+This module focuses on estimation and inference. Prediction is handled in later modeling modules.
+
+# Sampling Variation by Simulation
+
+Even when a population has a true mean, different samples produce different estimates. Simulation makes that visible.
+
+```{r sampling-simulation}
+population <- tibble(
+  patient = 1:100000,
+  expression = rnorm(100000, mean = 8, sd = 2)
+)
+
+sample_means <- tibble(sample_id = 1:1000) %>%
+  mutate(
+    mean_expression = map_dbl(
+      sample_id,
+      ~ mean(sample(population$expression, size = 20))
+    )
+  )
+
+sample_means %>%
+  ggplot(aes(x = mean_expression)) +
+  geom_histogram(bins = 35, fill = "#33658A", color = "white") +
+  geom_vline(xintercept = mean(population$expression), color = "#D1495B", linewidth = 1) +
+  labs(
+    title = "Sampling variation in estimated mean expression",
+    subtitle = "Each bar summarizes one simulated sample of 20 patients",
+    x = "Sample mean",
+    y = "Simulated samples"
+  ) +
+  theme_minimal()
+```
+
+# Effect Size Before P-Value
+
+The first question should be "how large is the difference?", not "is p < 0.05?".
+
+```{r esr1-effect-size}
+esr1_summary <- er_data %>%
+  group_by(ER_status) %>%
+  summarise(
+    patients = n(),
+    mean_esr1 = mean(ESR1),
+    sd_esr1 = sd(ESR1),
+    median_esr1 = median(ESR1),
+    .groups = "drop"
+  )
+
+esr1_summary
+```
+
+```{r mean-difference}
+mean_difference <- er_data %>%
+  summarise(
+    mean_positive = mean(ESR1[ER_status == "Positive"]),
+    mean_negative = mean(ESR1[ER_status == "Negative"]),
+    difference_positive_minus_negative = mean_positive - mean_negative
+  )
+
+mean_difference
+```
+
+# Confidence Interval
+
+A confidence interval describes uncertainty in an estimate. It is usually more informative than a p-value alone.
+
+```{r confidence-interval}
+esr1_t_test <- t.test(ESR1 ~ ER_status, data = er_data)
+
+tidy(esr1_t_test)
+```
+
+The confidence interval above estimates the difference in mean ESR1 expression between the two ER status groups. Always check which group order the function used before writing the biological interpretation.
+
+# Visual Check
+
+```{r esr1-by-er-plot}
+er_data %>%
+  ggplot(aes(x = ER_status, y = ESR1, fill = ER_status)) +
+  geom_boxplot(outlier.shape = NA, alpha = 0.8) +
+  geom_jitter(width = 0.15, alpha = 0.25, size = 0.8) +
+  labs(
+    title = "ESR1 expression by ER status",
+    x = "ER status",
+    y = "ESR1 expression"
+  ) +
+  theme_minimal() +
+  theme(legend.position = "none")
+```
+
+# Choosing a Simple Test
+
+Use the biological question and variable types to choose the analysis.
+
+| Question | Outcome | Grouping/Predictor | Common method |
+|---|---|---|---|
+| Is ESR1 different by ER status? | numeric | two groups | t-test or Wilcoxon test |
+| Is tumor size associated with age? | numeric | numeric | correlation or linear model |
+| Is ER status associated with PR status? | category | category | chi-square or Fisher test |
+| Does tumor size differ across PAM50 subtypes? | numeric | more than two groups | ANOVA or Kruskal-Wallis |
+| Does survival differ by subtype? | time-to-event | group | survival analysis |
+
+Assumptions matter, but no test rescues a poorly designed study.
+
+# Nonparametric Alternative
+
+When a numeric outcome is heavily skewed or outlier-prone, a rank-based test can be useful. It tests a different question than a t-test, so do not describe it as simply "the same test but safer."
+
+```{r wilcoxon}
+wilcox.test(ESR1 ~ ER_status, data = er_data) %>%
+  tidy()
+```
+
+# Correlation and Linear Association
+
+Correlation summarizes association between two numeric variables. It does not prove causality.
+
+```{r correlation}
+tumor_age <- metabric %>%
+  select(Patient_ID, Age_at_diagnosis, Tumour_size) %>%
+  drop_na()
+
+cor.test(tumor_age$Age_at_diagnosis, tumor_age$Tumour_size, method = "spearman") %>%
+  tidy()
+```
+
+```{r tumor-age-plot}
+tumor_age %>%
+  ggplot(aes(x = Age_at_diagnosis, y = Tumour_size)) +
+  geom_point(alpha = 0.35) +
+  geom_smooth(method = "lm", se = TRUE, color = "#D1495B") +
+  coord_cartesian(ylim = c(0, 150)) +
+  labs(
+    title = "Tumor size and age at diagnosis",
+    x = "Age at diagnosis",
+    y = "Tumor size"
+  ) +
+  theme_minimal()
+```
+
+# Linear Models and Covariate Adjustment
+
+Linear models let us estimate an association while adjusting for covariates. Adjustment is not automatic truth; it depends on whether the covariates are measured well and belong in the model.
+
+```{r linear-model}
+model_data <- er_data %>%
+  mutate(ER_status = relevel(factor(ER_status), ref = "Negative"))
+
+unadjusted_model <- lm(ESR1 ~ ER_status, data = model_data)
+adjusted_model <- lm(ESR1 ~ ER_status + Age_at_diagnosis + Tumour_size, data = model_data)
+
+bind_rows(
+  unadjusted = tidy(unadjusted_model, conf.int = TRUE),
+  adjusted = tidy(adjusted_model, conf.int = TRUE),
+  .id = "model"
+) %>%
+  filter(term == "ER_statusPositive")
+```
+
+In this example, the ER status coefficient estimates the mean ESR1 difference between ER-positive and ER-negative tumors. The adjusted model estimates that difference after accounting for age and tumor size.
+
+# Confounding
+
+A confounder is associated with both the exposure and the outcome and can distort the estimated relationship. In biology, common confounders include batch, tissue composition, disease stage, sex, age, and treatment history.
+
+```{r confounding-check}
+model_data %>%
+  group_by(ER_status) %>%
+  summarise(
+    patients = n(),
+    mean_age = mean(Age_at_diagnosis),
+    mean_tumor_size = mean(Tumour_size),
+    .groups = "drop"
+  )
+```
+
+This table does not prove confounding, but it asks whether important covariates differ across groups.
+
+# Multiple Testing
+
+Omics analyses often test thousands of features. If each test uses p < 0.05, many false positives are expected by chance.
+
+Here we test selected METABRIC expression features by ER status and correct the p-values using the Benjamini-Hochberg false discovery rate method.
+
+```{r multiple-testing}
+gene_columns <- c("ESR1", "PGR", "ERBB2", "TP53", "PIK3CA", "GATA3", "FOXA1", "MLPH")
+
+gene_tests <- map_dfr(gene_columns, function(gene) {
+  test_data <- metabric %>%
+    select(ER_status, expression = all_of(gene)) %>%
+    drop_na()
+
+  t.test(expression ~ ER_status, data = test_data) %>%
+    tidy() %>%
+    transmute(
+      gene = gene,
+      estimate_group_1 = estimate1,
+      estimate_group_2 = estimate2,
+      difference = estimate1 - estimate2,
+      p_value = p.value
+    )
+}) %>%
+  mutate(
+    adjusted_p = p.adjust(p_value, method = "BH"),
+    significant_fdr_05 = adjusted_p < 0.05
+  ) %>%
+  arrange(adjusted_p)
+
+gene_tests
+```
+
+```{r multiple-testing-plot}
+gene_tests %>%
+  mutate(gene = factor(gene, levels = rev(gene))) %>%
+  ggplot(aes(x = difference, y = gene, color = significant_fdr_05)) +
+  geom_point(size = 3) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "grey50") +
+  scale_color_manual(values = c("FALSE" = "grey50", "TRUE" = "#D1495B")) +
+  labs(
+    title = "Expression differences by ER status",
+    subtitle = "P-values corrected with Benjamini-Hochberg FDR",
+    x = "Mean difference from t-test output",
+    y = NULL,
+    color = "FDR < 0.05"
+  ) +
+  theme_minimal()
+```
+
+# Experimental Design Checklist
+
+Before running a statistical test, ask:
+
+- What is the experimental unit: patient, sample, well, cell, or gene?
+- Are biological replicates independent?
+- Are technical replicates being handled correctly?
+- Was treatment randomized?
+- Are batches balanced across biological groups?
+- Are important covariates measured?
+- Is the sample size adequate for the expected effect?
+- Are there many tests requiring FDR correction?
+- Was the analysis plan chosen before or after looking at results?
+
+# Reporting Results
+
+A useful result statement includes:
+
+- the comparison,
+- the effect size,
+- uncertainty,
+- test or model used,
+- sample size,
+- correction method if many tests were performed,
+- a limitation.
+
+Example:
+
+> In this METABRIC subset, ESR1 expression differed between ER-positive and ER-negative tumors. The estimated group difference and confidence interval are reported from a two-sample t-test. This comparison is associative, not causal, and does not account for all clinical or technical covariates.
+
+# Interpretation Checkpoint
+
+For each statistical result, answer:
+
+- What is being estimated?
+- What is the unit of analysis?
+- What assumptions are being made?
+- What covariates are ignored?
+- Was multiple testing performed?
+- What biological claim would be too strong?
+
+# Common Failure Modes
+
+- Reporting only p-values without effect sizes.
+- Treating a non-significant result as proof of no effect.
+- Ignoring multiple testing in omics.
+- Applying complete-case filtering to all columns instead of question-specific columns.
+- Adjusting for variables without a biological reason.
+- Confusing association, prediction, and causation.
+- Treating technical replicates as independent biological replicates.
+
+# Exercises
+
+1. Estimate the mean difference in `PGR` expression by `ER_status` and report a confidence interval.
+2. Test whether `Tumour_size` differs across `PAM50` subtypes. State which test you chose and why.
+3. Fit a linear model for `ESR1` using `ER_status`, `Age_at_diagnosis`, and `Tumour_size`. Interpret only the ER status coefficient.
+4. Run t-tests for the eight selected gene columns by `ER_status` and compare raw p-values with FDR-adjusted p-values.
+5. Write a results sentence for one analysis that includes an effect size, uncertainty, method, and limitation.
+
+# Key Takeaways
+
+- Statistics is about estimating uncertainty, not just finding small p-values.
+- Effect sizes and confidence intervals should lead interpretation.
+- Test choice depends on the biological question, variable types, and design.
+- Linear models can adjust for covariates, but only thoughtful design supports strong conclusions.
+- Multiple testing correction is essential when scanning many molecular features.
+
+# Reproducibility
+
+```{r session-info}
+sessionInfo()
+```

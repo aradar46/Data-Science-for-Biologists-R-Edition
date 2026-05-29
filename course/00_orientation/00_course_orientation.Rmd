@@ -1,0 +1,218 @@
+---
+title: "Module 0 - Course Orientation and Scientific Workflow"
+output:
+  html_document:
+    toc: true
+    toc_depth: 2
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  message = FALSE,
+  warning = FALSE,
+  fig.width = 8,
+  fig.height = 5
+)
+
+set.seed(42)
+```
+
+# Biological Question
+
+How do we turn a biological question into a reproducible data science workflow that can be checked, rerun, and interpreted honestly?
+
+# Learning Objectives
+
+By the end of this module, learners should be able to:
+
+- distinguish descriptive, inferential, and predictive questions,
+- identify the unit of analysis in a biological dataset,
+- explain why data validation comes before modeling,
+- run basic checks on the course datasets,
+- describe how the capstone connects clinical data, omics data, statistics, machine learning, and reproducible reporting.
+
+# Course Philosophy
+
+This course is not a package tour. Packages matter, but the central skill is choosing a defensible analysis for a biological question.
+
+Every analysis should start with five questions:
+
+1. What is the biological question?
+2. What is the unit of analysis?
+3. What data do we have, and what assumptions does it encode?
+4. What method is appropriate for the question and data?
+5. What conclusion is justified, and what uncertainty remains?
+
+# Three Kinds of Data Science Questions
+
+Biological data science work usually falls into one of three categories.
+
+| Question type | Goal | Example |
+|---|---|---|
+| Descriptive | Summarize what is in the data | What PAM50 subtypes are represented in METABRIC? |
+| Inferential | Estimate or test a relationship | Is survival associated with tumor stage after accounting for age? |
+| Predictive | Predict outcomes for unseen samples | Can clinical and expression features predict survival risk? |
+
+These question types overlap, but they should not be confused. A model that predicts well does not automatically explain biological mechanism.
+
+# Setup
+
+```{r packages}
+library(tidyverse)
+library(here)
+```
+
+# Course Datasets
+
+The redesigned course uses three main data assets:
+
+- METABRIC clinical and selected expression features.
+- A clinical survival table for 614 breast cancer patients.
+- A matched microarray expression matrix for the same 614 patients.
+
+```{r data-paths}
+metabric_path <- here("data", "metabric_clinical_and_expression_data.csv")
+clinical_path <- here("data", "clinical.csv")
+omics_path <- here("data", "omics.csv")
+
+file.exists(c(metabric_path, clinical_path, omics_path))
+```
+
+# Data Validation First
+
+Before plotting or modeling, verify dimensions, identifiers, missingness, and obvious alignment problems.
+
+```{r load-data}
+metabric <- read_csv(metabric_path, show_col_types = FALSE)
+clinical <- read_csv(clinical_path, show_col_types = FALSE)
+omics <- read_csv(omics_path, show_col_types = FALSE)
+
+dataset_summary <- tibble(
+  dataset = c("metabric", "clinical", "omics"),
+  rows = c(nrow(metabric), nrow(clinical), nrow(omics)),
+  columns = c(ncol(metabric), ncol(clinical), ncol(omics)),
+  missing_values = c(sum(is.na(metabric)), sum(is.na(clinical)), sum(is.na(omics)))
+)
+
+dataset_summary
+```
+
+# Unit of Analysis
+
+The unit of analysis is the thing represented by one row. Getting this wrong leads to invalid statistics and inflated model performance.
+
+```{r unit-of-analysis}
+id_summary <- tibble(
+  dataset = c("metabric", "clinical", "omics"),
+  id_column = c("Patient_ID", "patientID", "patientID"),
+  rows = c(nrow(metabric), nrow(clinical), nrow(omics)),
+  unique_ids = c(
+    n_distinct(metabric$Patient_ID),
+    n_distinct(clinical$patientID),
+    n_distinct(omics$patientID)
+  )
+)
+
+id_summary
+```
+
+For the main capstone, the unit of analysis is the patient.
+
+# Clinical and Omics Alignment
+
+The clinical and omics files are intended to be paired by `patientID`. We validate that before using them together.
+
+```{r clinical-omics-alignment}
+clinical_ids <- clinical$patientID
+omics_ids <- omics$patientID
+
+alignment_summary <- tibble(
+  check = c(
+    "clinical IDs are unique",
+    "omics IDs are unique",
+    "same number of IDs",
+    "same ID set",
+    "same ID order"
+  ),
+  passed = c(
+    !anyDuplicated(clinical_ids),
+    !anyDuplicated(omics_ids),
+    length(clinical_ids) == length(omics_ids),
+    setequal(clinical_ids, omics_ids),
+    identical(clinical_ids, omics_ids)
+  )
+)
+
+alignment_summary
+```
+
+# First Biological Glimpse
+
+The clinical capstone outcome is time-to-event data. `status` indicates whether the event was observed and `time` is the event or censoring time.
+
+```{r clinical-glimpse}
+clinical %>%
+  count(treatment, status, name = "patients") %>%
+  mutate(
+    treatment = if_else(treatment == 0, "standard_of_care", "standard_plus_chemotherapy"),
+    status = if_else(status == 0, "censored", "event")
+  )
+```
+
+```{r time-distribution}
+clinical %>%
+  mutate(
+    treatment = factor(
+      treatment,
+      levels = c(0, 1),
+      labels = c("Standard of care", "Standard + chemotherapy")
+    )
+  ) %>%
+  ggplot(aes(x = time, fill = treatment)) +
+  geom_histogram(bins = 40, alpha = 0.75, position = "identity") +
+  facet_wrap(~treatment, ncol = 1) +
+  labs(
+    title = "Observed follow-up time by treatment group",
+    x = "Time",
+    y = "Patients"
+  ) +
+  theme_minimal()
+```
+
+# Interpretation Checkpoint
+
+Before modeling, answer:
+
+- Are rows patients, samples, genes, or measurements?
+- Is the outcome continuous, categorical, count-based, or time-to-event?
+- Are there missing values or unmatched identifiers?
+- Is the goal explanation, prediction, or both?
+
+# Common Failure Modes
+
+- Treating prediction as proof of biological mechanism.
+- Modeling before validating identifiers.
+- Normalizing or selecting features before splitting data.
+- Ignoring censoring in survival data.
+- Reporting p-values without effect sizes, confidence intervals, or multiple-testing correction.
+
+# Exercises
+
+1. Count how many METABRIC patients have each `PAM50` subtype.
+2. Calculate the number of expression probes in `omics.csv`.
+3. Confirm that `clinical.csv` and `omics.csv` still align after sorting both by `patientID`.
+4. Write one descriptive, one inferential, and one predictive question for the capstone dataset.
+
+# Key Takeaways
+
+- A good biological data science workflow starts with the question and unit of analysis.
+- Data validation is not optional setup work; it is part of the scientific analysis.
+- The capstone dataset is patient-level survival data with matched high-dimensional expression features.
+- Reproducibility means another person can rerun the analysis and inspect every decision.
+
+# Reproducibility
+
+```{r session-info}
+sessionInfo()
+```

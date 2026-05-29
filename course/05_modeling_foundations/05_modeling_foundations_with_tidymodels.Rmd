@@ -1,0 +1,502 @@
+---
+title: "Module 5 - Modeling Foundations with tidymodels"
+output:
+  html_document:
+    toc: true
+    toc_depth: 2
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  message = FALSE,
+  warning = FALSE,
+  fig.width = 8,
+  fig.height = 5
+)
+
+set.seed(42)
+```
+
+# Biological Question
+
+How do we build and evaluate predictive models for biological data without leaking information from the test set into training?
+
+# Learning Objectives
+
+By the end of this module, learners should be able to:
+
+- distinguish predictive modeling from statistical inference,
+- create leakage-safe train/test splits,
+- use `recipes` for preprocessing inside modeling workflows,
+- fit regression and classification models with `tidymodels`,
+- evaluate regression and classification performance using appropriate metrics,
+- use cross-validation and simple tuning,
+- explain why model performance does not imply biological causality.
+
+# Prerequisites
+
+- Module 2: data wrangling and validation.
+- Module 4: statistical reasoning and experimental design.
+- Packages: `tidyverse`, `here`, `tidymodels`, `ranger`, `vip`.
+- Dataset: `data/metabric_clinical_and_expression_data.csv`.
+
+# Setup
+
+```{r packages}
+library(tidyverse)
+library(here)
+library(tidymodels)
+library(ranger)
+library(vip)
+
+tidymodels_prefer()
+```
+
+# Data Input and Validation
+
+```{r data-input}
+metabric <- read_csv(
+  here("data", "metabric_clinical_and_expression_data.csv"),
+  show_col_types = FALSE
+)
+
+required_columns <- c(
+  "Patient_ID",
+  "Age_at_diagnosis",
+  "Survival_time",
+  "Tumour_size",
+  "Mutation_count",
+  "Cancer_type",
+  "ER_status",
+  "PAM50",
+  "ESR1",
+  "PGR",
+  "ERBB2",
+  "TP53",
+  "PIK3CA",
+  "GATA3",
+  "FOXA1",
+  "MLPH"
+)
+
+stopifnot(all(required_columns %in% names(metabric)))
+stopifnot(!anyDuplicated(metabric$Patient_ID))
+```
+
+# Predictive Modeling Is Not Inference
+
+Predictive modeling asks: "How well can this model predict unseen data?"
+
+It does not automatically answer:
+
+- Is this feature causal?
+- Is this feature a therapeutic target?
+- Will performance hold in another hospital, assay platform, or population?
+
+Those questions need design, validation, and biological follow-up.
+
+# Example 1: Regression
+
+We start with a regression task: predict tumor size from age, mutation count, cancer type, subtype, and selected expression features.
+
+This is a teaching example, not a recommended clinical model.
+
+```{r regression-data}
+regression_data <- metabric %>%
+  select(
+    Patient_ID,
+    Tumour_size,
+    Age_at_diagnosis,
+    Mutation_count,
+    Cancer_type,
+    PAM50,
+    ESR1,
+    PGR,
+    ERBB2,
+    TP53,
+    PIK3CA,
+    GATA3,
+    FOXA1,
+    MLPH
+  ) %>%
+  drop_na(Tumour_size, Age_at_diagnosis, Cancer_type, PAM50)
+
+regression_data %>%
+  summarise(
+    patients = n(),
+    missing_values = sum(is.na(across(everything())))
+  )
+```
+
+## Train/Test Split
+
+The test set is held back until final evaluation. It must not influence preprocessing, model selection, or tuning.
+
+```{r regression-split}
+set.seed(42)
+tumor_split <- initial_split(regression_data, prop = 0.8)
+tumor_train <- training(tumor_split)
+tumor_test <- testing(tumor_split)
+
+dim(tumor_train)
+dim(tumor_test)
+```
+
+## Baseline Model
+
+A simple baseline helps interpret whether a more complex model is actually useful.
+
+```{r regression-baseline}
+baseline_mean <- mean(tumor_train$Tumour_size)
+
+baseline_results <- tumor_test %>%
+  transmute(
+    Tumour_size,
+    .pred = baseline_mean
+  )
+
+baseline_metrics <- metrics(baseline_results, truth = Tumour_size, estimate = .pred)
+baseline_metrics
+```
+
+## Recipe and Workflow
+
+Preprocessing steps go inside the recipe. When resampling, `tidymodels` estimates those steps from each training fold only.
+
+```{r regression-recipe}
+tumor_recipe <- recipe(
+  Tumour_size ~ Age_at_diagnosis + Mutation_count + Cancer_type + PAM50 +
+    ESR1 + PGR + ERBB2 + TP53 + PIK3CA + GATA3 + FOXA1 + MLPH,
+  data = tumor_train
+) %>%
+  step_impute_median(all_numeric_predictors()) %>%
+  step_impute_mode(all_nominal_predictors()) %>%
+  step_novel(all_nominal_predictors()) %>%
+  step_dummy(all_nominal_predictors()) %>%
+  step_zv(all_predictors()) %>%
+  step_normalize(all_numeric_predictors())
+
+linear_spec <- linear_reg() %>%
+  set_engine("lm")
+
+linear_workflow <- workflow() %>%
+  add_recipe(tumor_recipe) %>%
+  add_model(linear_spec)
+```
+
+## Fit and Evaluate
+
+```{r regression-fit}
+linear_fit <- fit(linear_workflow, data = tumor_train)
+
+linear_results <- predict(linear_fit, tumor_test) %>%
+  bind_cols(tumor_test %>% select(Tumour_size))
+
+linear_metrics <- metrics(linear_results, truth = Tumour_size, estimate = .pred)
+linear_metrics
+```
+
+```{r regression-observed-predicted}
+linear_results %>%
+  ggplot(aes(x = Tumour_size, y = .pred)) +
+  geom_point(alpha = 0.5) +
+  geom_abline(slope = 1, intercept = 0, color = "#D1495B", linetype = "dashed") +
+  coord_equal() +
+  labs(
+    title = "Observed vs predicted tumor size",
+    x = "Observed tumor size",
+    y = "Predicted tumor size"
+  ) +
+  theme_minimal()
+```
+
+# Cross-Validation
+
+Cross-validation estimates how model performance varies across multiple training/validation splits.
+
+```{r regression-cv}
+set.seed(42)
+tumor_folds <- vfold_cv(tumor_train, v = 5)
+
+cv_results <- fit_resamples(
+  linear_workflow,
+  resamples = tumor_folds,
+  metrics = metric_set(rmse, rsq, mae),
+  control = control_resamples(save_pred = TRUE)
+)
+
+collect_metrics(cv_results)
+```
+
+# Example 2: Classification
+
+Now we predict ER status using selected expression and clinical features. This is intentionally easier than many real biomedical prediction problems because ESR1 expression is biologically tied to ER status.
+
+That makes it useful pedagogically, but it also raises a warning: strong predictive features may be proxies for how a label was measured.
+
+```{r classification-data}
+classification_data <- metabric %>%
+  select(
+    Patient_ID,
+    ER_status,
+    Age_at_diagnosis,
+    Tumour_size,
+    Mutation_count,
+    Cancer_type,
+    PAM50,
+    ESR1,
+    PGR,
+    ERBB2,
+    TP53,
+    PIK3CA,
+    GATA3,
+    FOXA1,
+    MLPH
+  ) %>%
+  filter(ER_status %in% c("Negative", "Positive")) %>%
+  mutate(ER_status = factor(ER_status, levels = c("Negative", "Positive"))) %>%
+  drop_na(ER_status)
+
+classification_data %>%
+  count(ER_status, name = "patients") %>%
+  mutate(fraction = patients / sum(patients))
+```
+
+## Stratified Split
+
+For classification, stratify by the outcome so class balance is similar in training and test sets.
+
+```{r classification-split}
+set.seed(42)
+er_split <- initial_split(classification_data, prop = 0.8, strata = ER_status)
+er_train <- training(er_split)
+er_test <- testing(er_split)
+
+bind_rows(
+  train = er_train %>% count(ER_status),
+  test = er_test %>% count(ER_status),
+  .id = "split"
+)
+```
+
+## Classification Recipe
+
+```{r classification-recipe}
+er_recipe <- recipe(
+  ER_status ~ Age_at_diagnosis + Tumour_size + Mutation_count + Cancer_type + PAM50 +
+    ESR1 + PGR + ERBB2 + TP53 + PIK3CA + GATA3 + FOXA1 + MLPH,
+  data = er_train
+) %>%
+  step_impute_median(all_numeric_predictors()) %>%
+  step_impute_mode(all_nominal_predictors()) %>%
+  step_novel(all_nominal_predictors()) %>%
+  step_dummy(all_nominal_predictors()) %>%
+  step_zv(all_predictors()) %>%
+  step_normalize(all_numeric_predictors())
+```
+
+## Logistic Regression
+
+```{r logistic-model}
+logistic_spec <- logistic_reg() %>%
+  set_engine("glm")
+
+logistic_workflow <- workflow() %>%
+  add_recipe(er_recipe) %>%
+  add_model(logistic_spec)
+
+logistic_fit <- fit(logistic_workflow, data = er_train)
+```
+
+```{r logistic-predictions}
+logistic_predictions <- predict(logistic_fit, er_test, type = "prob") %>%
+  bind_cols(predict(logistic_fit, er_test, type = "class")) %>%
+  bind_cols(er_test %>% select(ER_status))
+
+logistic_predictions %>%
+  slice_head(n = 8)
+```
+
+## Classification Metrics
+
+Accuracy alone is rarely enough in biomedical classification. Sensitivity, specificity, ROC AUC, and threshold choice often matter.
+
+```{r classification-metrics}
+accuracy(logistic_predictions, truth = ER_status, estimate = .pred_class)
+sens(logistic_predictions, truth = ER_status, estimate = .pred_class, event_level = "second")
+spec(logistic_predictions, truth = ER_status, estimate = .pred_class, event_level = "second")
+roc_auc(logistic_predictions, truth = ER_status, .pred_Positive, event_level = "second")
+```
+
+```{r confusion-matrix}
+conf_mat(logistic_predictions, truth = ER_status, estimate = .pred_class)
+```
+
+```{r roc-curve}
+logistic_predictions %>%
+  roc_curve(truth = ER_status, .pred_Positive, event_level = "second") %>%
+  autoplot() +
+  labs(title = "ROC curve for ER status classifier") +
+  theme_minimal()
+```
+
+# Threshold Choice
+
+The default 0.5 probability threshold may not match the scientific or clinical cost of false positives and false negatives.
+
+```{r threshold-example}
+threshold_results <- logistic_predictions %>%
+  transmute(
+    ER_status,
+    predicted_positive_30 = factor(
+      if_else(.pred_Positive >= 0.30, "Positive", "Negative"),
+      levels = c("Negative", "Positive")
+    ),
+    predicted_positive_70 = factor(
+      if_else(.pred_Positive >= 0.70, "Positive", "Negative"),
+      levels = c("Negative", "Positive")
+    )
+  )
+
+tibble(
+  threshold = c(0.30, 0.70),
+  sensitivity = c(
+    sens(threshold_results, ER_status, predicted_positive_30, event_level = "second")$.estimate,
+    sens(threshold_results, ER_status, predicted_positive_70, event_level = "second")$.estimate
+  ),
+  specificity = c(
+    spec(threshold_results, ER_status, predicted_positive_30, event_level = "second")$.estimate,
+    spec(threshold_results, ER_status, predicted_positive_70, event_level = "second")$.estimate
+  )
+)
+```
+
+# Simple Model Tuning
+
+Random forests can capture nonlinear patterns and interactions. Tuning should happen inside resampling on the training set only.
+
+```{r random-forest-tuning}
+rf_spec <- rand_forest(
+  mtry = tune(),
+  min_n = tune(),
+  trees = 200
+) %>%
+  set_engine("ranger", importance = "permutation") %>%
+  set_mode("classification")
+
+rf_workflow <- workflow() %>%
+  add_recipe(er_recipe) %>%
+  add_model(rf_spec)
+
+set.seed(42)
+er_folds <- vfold_cv(er_train, v = 5, strata = ER_status)
+
+rf_grid <- grid_regular(
+  mtry(range = c(2, 8)),
+  min_n(range = c(2, 10)),
+  levels = 3
+)
+
+set.seed(42)
+rf_tune <- tune_grid(
+  rf_workflow,
+  resamples = er_folds,
+  grid = rf_grid,
+  metrics = metric_set(roc_auc, accuracy)
+)
+
+collect_metrics(rf_tune) %>%
+  arrange(desc(mean))
+```
+
+```{r finalize-rf}
+best_rf <- select_best(rf_tune, metric = "roc_auc")
+
+final_rf_workflow <- finalize_workflow(rf_workflow, best_rf)
+
+final_rf_fit <- fit(final_rf_workflow, data = er_train)
+
+rf_predictions <- predict(final_rf_fit, er_test, type = "prob") %>%
+  bind_cols(predict(final_rf_fit, er_test, type = "class")) %>%
+  bind_cols(er_test %>% select(ER_status))
+
+tibble(
+  model = c("logistic regression", "random forest"),
+  roc_auc = c(
+    roc_auc(logistic_predictions, ER_status, .pred_Positive, event_level = "second")$.estimate,
+    roc_auc(rf_predictions, ER_status, .pred_Positive, event_level = "second")$.estimate
+  ),
+  accuracy = c(
+    accuracy(logistic_predictions, ER_status, .pred_class)$.estimate,
+    accuracy(rf_predictions, ER_status, .pred_class)$.estimate
+  )
+)
+```
+
+# Variable Importance
+
+Variable importance can help inspect a fitted model, but it does not prove mechanism. Features can be predictive because they are correlated with causal biology, batch, label generation, or other hidden structure.
+
+```{r variable-importance}
+final_rf_fit %>%
+  extract_fit_parsnip() %>%
+  vip(num_features = 12) +
+  labs(title = "Random forest variable importance for ER status prediction")
+```
+
+# Leakage Checklist
+
+Before trusting a model, ask:
+
+- Did we split before preprocessing?
+- Were imputation, normalization, and feature selection estimated only from training data?
+- Did any duplicate or repeated patient appear in both train and test sets?
+- Was the test set used during tuning?
+- Does any predictor encode the outcome directly?
+- Is the test set representative of the intended future data?
+- Is the model being interpreted as prediction rather than causation?
+
+# Interpretation Checkpoint
+
+For each model, answer:
+
+- What is the prediction target?
+- What is the unit of analysis?
+- What predictors were available at prediction time?
+- What metric best matches the biological or clinical use case?
+- What are the likely leakage risks?
+- What validation would be needed before deployment?
+
+# Common Failure Modes
+
+- Normalizing all data before splitting.
+- Selecting top genes using the full dataset before cross-validation.
+- Reporting only the best tuned result without a final held-out test.
+- Using accuracy for imbalanced biomedical outcomes.
+- Interpreting feature importance as causal mechanism.
+- Ignoring how labels were generated.
+- Treating internal validation as external validation.
+
+# Exercises
+
+1. Fit a baseline classifier that always predicts the majority ER status class and compare its accuracy to logistic regression.
+2. Remove `ESR1` from the ER status classifier and observe how performance changes.
+3. Add `step_corr()` to remove highly correlated numeric predictors and rerun logistic regression.
+4. Tune a random forest using `min_n` only and compare ROC AUC to the untuned logistic regression.
+5. Write a model card paragraph that states the target, data, metrics, limitations, and leakage risks.
+
+# Key Takeaways
+
+- Predictive modeling evaluates performance on unseen data.
+- Splitting before preprocessing is the core anti-leakage habit.
+- Recipes and workflows make preprocessing reproducible inside resampling.
+- Biomedical classification needs metrics beyond accuracy.
+- Tuning belongs inside cross-validation on the training set.
+- Feature importance is model behavior, not biological proof.
+
+# Reproducibility
+
+```{r session-info}
+sessionInfo()
+```

@@ -1,0 +1,7 @@
+rendered_notebooks/
+outputs/
+results/
+*.html
+.Rhistory
+.RData
+.Rproj.user/

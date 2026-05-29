@@ -1,0 +1,330 @@
+---
+title: "Module 2 - Data Wrangling and Validation"
+output:
+  html_document:
+    toc: true
+    toc_depth: 2
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  message = FALSE,
+  warning = FALSE,
+  fig.width = 8,
+  fig.height = 5
+)
+
+set.seed(42)
+```
+
+# Biological Question
+
+How do we turn raw clinical and omics tables into an analysis-ready patient-level dataset without corrupting identifiers, outcomes, or molecular measurements?
+
+# Learning Objectives
+
+By the end of this module, learners should be able to:
+
+- inspect table dimensions, column names, and data types,
+- validate patient identifiers before joining tables,
+- audit missing values and categorical levels,
+- join clinical and omics data safely,
+- reshape expression data between wide and long formats,
+- create analysis-ready derived variables with clear meaning.
+
+# Prerequisites
+
+- Module 0: course orientation and scientific workflow.
+- Module 1: R objects, tibbles, functions, and stable file paths.
+- Packages: `tidyverse`, `here`.
+- Datasets: `data/metabric_clinical_and_expression_data.csv`, `data/clinical.csv`, `data/omics.csv`.
+
+# Setup
+
+```{r packages}
+library(tidyverse)
+library(here)
+```
+
+# Data Input
+
+```{r data-input}
+metabric <- read_csv(
+  here("data", "metabric_clinical_and_expression_data.csv"),
+  show_col_types = FALSE
+)
+
+clinical <- read_csv(
+  here("data", "clinical.csv"),
+  show_col_types = FALSE
+)
+
+omics <- read_csv(
+  here("data", "omics.csv"),
+  show_col_types = FALSE
+)
+```
+
+# First Table Audit
+
+Before any join or transformation, record table size and missingness.
+
+```{r table-audit}
+table_audit <- tibble(
+  table = c("metabric", "clinical", "omics"),
+  rows = c(nrow(metabric), nrow(clinical), nrow(omics)),
+  columns = c(ncol(metabric), ncol(clinical), ncol(omics)),
+  missing_values = c(sum(is.na(metabric)), sum(is.na(clinical)), sum(is.na(omics)))
+)
+
+table_audit
+```
+
+# Column Types
+
+Column types tell you what operations are safe. For example, survival time should be numeric, while treatment and status often become factors for modeling and plotting.
+
+```{r column-types}
+clinical_types <- tibble(
+  column = names(clinical),
+  type = map_chr(clinical, ~ class(.x)[1])
+)
+
+clinical_types
+```
+
+```{r metabric-types-summary}
+metabric_type_summary <- tibble(
+  column = names(metabric),
+  type = map_chr(metabric, ~ class(.x)[1]),
+  missing = map_int(metabric, ~ sum(is.na(.x)))
+) %>%
+  count(type, sort = TRUE)
+
+metabric_type_summary
+```
+
+# Identifier Validation
+
+Identifiers are the join contract. If patient IDs are duplicated, missing, or mismatched, downstream analyses can become invalid.
+
+```{r id-validation}
+validate_ids <- function(ids) {
+  tibble(
+    rows = length(ids),
+    unique_ids = n_distinct(ids),
+    missing_ids = sum(is.na(ids)),
+    duplicated_ids = sum(duplicated(ids))
+  )
+}
+
+bind_rows(
+  clinical = validate_ids(clinical$patientID),
+  omics = validate_ids(omics$patientID),
+  .id = "table"
+)
+```
+
+```{r id-set-checks}
+id_checks <- tibble(
+  check = c(
+    "clinical IDs are unique",
+    "omics IDs are unique",
+    "clinical and omics contain the same patient IDs",
+    "clinical and omics are already in the same order"
+  ),
+  passed = c(
+    !anyDuplicated(clinical$patientID),
+    !anyDuplicated(omics$patientID),
+    setequal(clinical$patientID, omics$patientID),
+    identical(clinical$patientID, omics$patientID)
+  )
+)
+
+id_checks
+```
+
+# Safe Joining
+
+Never rely on row order when joining tables. Align by patient ID explicitly.
+
+```{r safe-join}
+omics_aligned <- omics %>%
+  slice(match(clinical$patientID, patientID))
+
+stopifnot(identical(clinical$patientID, omics_aligned$patientID))
+
+clinical_omics <- clinical %>%
+  left_join(omics_aligned, by = "patientID")
+
+dim(clinical_omics)
+```
+
+# Outcome and Treatment Variables
+
+Turn coded variables into interpretable factors while keeping the original columns available.
+
+```{r recode-clinical}
+clinical_clean <- clinical %>%
+  mutate(
+    treatment_group = factor(
+      treatment,
+      levels = c(0, 1),
+      labels = c("Standard of care", "Standard + chemotherapy")
+    ),
+    event_status = factor(
+      status,
+      levels = c(0, 1),
+      labels = c("Censored", "Event")
+    )
+  )
+
+clinical_clean %>%
+  count(treatment_group, event_status, name = "patients")
+```
+
+# Missing Data Audit
+
+METABRIC contains clinically meaningful missingness. Missingness should be inspected before deciding whether to drop, impute, or model it.
+
+```{r missingness-audit}
+metabric_missing <- metabric %>%
+  summarise(across(everything(), ~ sum(is.na(.x)))) %>%
+  pivot_longer(
+    cols = everything(),
+    names_to = "column",
+    values_to = "missing"
+  ) %>%
+  mutate(fraction_missing = missing / nrow(metabric)) %>%
+  arrange(desc(fraction_missing))
+
+metabric_missing %>%
+  filter(missing > 0) %>%
+  slice_head(n = 10)
+```
+
+# Categorical Level Audit
+
+Categorical variables often hide spelling issues, rare levels, or implicit reference groups.
+
+```{r categorical-audit}
+metabric %>%
+  count(ER_status, PR_status, HER2_status, name = "patients") %>%
+  arrange(desc(patients)) %>%
+  slice_head(n = 10)
+```
+
+# Reshaping Omics Data
+
+High-dimensional expression tables are often stored wide: one patient per row and one feature per column. Many tidyverse operations are easier in long format.
+
+```{r omics-long}
+selected_probes <- names(omics)[2:7]
+
+omics_long <- omics %>%
+  select(patientID, all_of(selected_probes)) %>%
+  pivot_longer(
+    cols = -patientID,
+    names_to = "probe_id",
+    values_to = "expression"
+  )
+
+omics_long %>%
+  slice_head(n = 12)
+```
+
+Long format makes summaries by feature straightforward.
+
+```{r omics-summary}
+omics_long %>%
+  group_by(probe_id) %>%
+  summarise(
+    mean_expression = mean(expression),
+    sd_expression = sd(expression),
+    .groups = "drop"
+  ) %>%
+  arrange(desc(sd_expression))
+```
+
+# Build a Starter Analysis Table
+
+For later modules, create a small, patient-level analysis table containing clinical outcomes and a few selected expression probes. This is not a final model table; it is a transparent teaching table.
+
+```{r starter-table}
+starter_analysis <- clinical_clean %>%
+  left_join(
+    omics %>% select(patientID, all_of(selected_probes)),
+    by = "patientID"
+  )
+
+starter_analysis %>%
+  select(patientID, treatment_group, time, event_status, all_of(selected_probes)) %>%
+  slice_head(n = 8)
+```
+
+# Validation Checklist
+
+```{r validation-checklist}
+validation_checklist <- tibble(
+  check = c(
+    "starter table has one row per patient",
+    "no missing patient IDs",
+    "all clinical patients retained",
+    "selected expression probes are numeric",
+    "time is non-negative",
+    "status values are valid"
+  ),
+  passed = c(
+    nrow(starter_analysis) == n_distinct(starter_analysis$patientID),
+    sum(is.na(starter_analysis$patientID)) == 0,
+    nrow(starter_analysis) == nrow(clinical),
+    all(map_lgl(starter_analysis[selected_probes], is.numeric)),
+    all(starter_analysis$time >= 0),
+    all(starter_analysis$status %in% c(0, 1))
+  )
+)
+
+validation_checklist
+```
+
+# Interpretation Checkpoint
+
+Before using `starter_analysis`, answer:
+
+- What is one row?
+- Which column is the patient identifier?
+- Which variables are outcomes?
+- Which variables are predictors?
+- Which transformations changed interpretation?
+- Which validation checks would make you stop and investigate?
+
+# Common Failure Modes
+
+- Joining clinical and omics tables by row order instead of patient ID.
+- Dropping rows with missing values before checking what was lost.
+- Converting coded variables to factors without preserving their meaning.
+- Treating probe IDs as gene symbols.
+- Reshaping expression data without checking that values remain numeric.
+
+# Exercises
+
+1. Identify the five METABRIC columns with the highest fraction of missing values.
+2. Count patients by `PAM50` subtype and `Vital_status`.
+3. Select ten expression probes from `omics.csv`, reshape them to long format, and compute their standard deviations.
+4. Create a validation table for METABRIC patient IDs, survival time, and vital status.
+5. Explain why `left_join()` is safer than column-binding clinical and omics tables.
+
+# Key Takeaways
+
+- Wrangling is part of the scientific workflow, not administrative cleanup.
+- Patient identifiers are the contract between clinical and molecular data.
+- Missingness and categorical levels should be audited before analysis.
+- Long and wide data formats serve different purposes.
+- A clean analysis table should be accompanied by validation checks.
+
+# Reproducibility
+
+```{r session-info}
+sessionInfo()
+```

@@ -1,0 +1,230 @@
+---
+title: "Module 1 - R Foundations for Biologists"
+output:
+  html_document:
+    toc: true
+    toc_depth: 2
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  message = FALSE,
+  warning = FALSE,
+  fig.width = 8,
+  fig.height = 5
+)
+
+set.seed(42)
+```
+
+# Biological Question
+
+How can we use core R objects and functions to inspect biological data without losing track of sample identifiers, variable types, and scientific meaning?
+
+# Learning Objectives
+
+By the end of this module, learners should be able to:
+
+- create and inspect basic R objects,
+- distinguish numeric, character, logical, and factor variables,
+- use vectors and tibbles for biological data,
+- write small functions for repeated checks,
+- load course data with stable file paths,
+- perform simple validation on patient-level data.
+
+# Setup
+
+```{r packages}
+library(tidyverse)
+library(here)
+```
+
+# Objects Represent Biological Things
+
+In R, an object is a named value. In biological analysis, names should reflect the thing being represented.
+
+```{r basic-objects}
+gene_symbol <- "ESR1"
+expression_value <- 10.8
+is_receptor_gene <- TRUE
+
+gene_symbol
+expression_value
+is_receptor_gene
+```
+
+# Vectors
+
+A vector stores multiple values of the same basic type. A gene panel, patient ages, or treatment labels can all be represented as vectors.
+
+```{r vectors}
+marker_genes <- c("ESR1", "PGR", "ERBB2", "TP53", "GATA3")
+patient_ages <- c(45, 62, 71, 53, 80)
+received_chemo <- c(TRUE, FALSE, TRUE, TRUE, FALSE)
+
+length(marker_genes)
+mean(patient_ages)
+table(received_chemo)
+```
+
+# Factors
+
+Categorical biological variables should often be represented as factors, especially when order or reference level matters.
+
+```{r factors}
+tumor_stage <- factor(
+  c("I", "II", "III", "II", "I"),
+  levels = c("I", "II", "III", "IV"),
+  ordered = TRUE
+)
+
+tumor_stage
+summary(tumor_stage)
+```
+
+# Tibbles
+
+A tibble is a rectangular table. Most course datasets are tibbles after loading.
+
+```{r tibbles}
+toy_clinical <- tibble(
+  patient_id = paste0("P", 1:5),
+  age = patient_ages,
+  tumor_stage = tumor_stage,
+  treatment = factor(c("A", "B", "A", "A", "B")),
+  event = c(1, 0, 1, 1, 0)
+)
+
+toy_clinical
+glimpse(toy_clinical)
+```
+
+# Functions
+
+Functions make repeated checks explicit. This is important because validation should be rerunnable.
+
+```{r functions}
+count_missing <- function(x) {
+  sum(is.na(x))
+}
+
+count_missing(c(1, 2, NA, 4))
+```
+
+Write functions with names that describe the biological or data-quality question.
+
+```{r validation-function}
+has_unique_ids <- function(ids) {
+  !anyDuplicated(ids)
+}
+
+has_unique_ids(toy_clinical$patient_id)
+```
+
+# Load a Real Course Dataset
+
+Use `here()` so paths are relative to the project root rather than the current RStudio working directory.
+
+```{r load-metabric}
+metabric <- read_csv(
+  here("data", "metabric_clinical_and_expression_data.csv"),
+  show_col_types = FALSE
+)
+
+glimpse(metabric)
+```
+
+# Inspect Data Types
+
+Before analysis, check whether each column has the expected type.
+
+```{r inspect-types}
+metabric_types <- tibble(
+  column = names(metabric),
+  type = map_chr(metabric, ~ class(.x)[1]),
+  missing_values = map_int(metabric, count_missing)
+)
+
+metabric_types
+```
+
+# Validate Patient Identifiers
+
+The patient ID column is the anchor for patient-level analysis.
+
+```{r validate-ids}
+id_checks <- tibble(
+  check = c("no missing patient IDs", "patient IDs are unique"),
+  passed = c(
+    count_missing(metabric$Patient_ID) == 0,
+    has_unique_ids(metabric$Patient_ID)
+  )
+)
+
+id_checks
+```
+
+# Summarize Clinically Meaningful Variables
+
+```{r summarize-clinical}
+metabric %>%
+  summarise(
+    patients = n(),
+    median_age = median(Age_at_diagnosis, na.rm = TRUE),
+    median_survival_time = median(Survival_time, na.rm = TRUE),
+    missing_tumor_size = count_missing(Tumour_size),
+    missing_tumor_stage = count_missing(Tumour_stage)
+  )
+```
+
+# Simple String Work
+
+Biological identifiers are often strings. String operations are useful for gene names, probe IDs, sample IDs, and file names.
+
+```{r string-work}
+probe_ids <- names(read_csv(here("data", "omics.csv"), n_max = 0, show_col_types = FALSE))
+probe_ids <- probe_ids[probe_ids != "patientID"]
+
+head(probe_ids)
+str_detect(probe_ids[1:10], "_at$")
+```
+
+# Interpretation Checkpoint
+
+Answer these before moving on:
+
+- Which columns are patient identifiers?
+- Which variables are categorical?
+- Which variables have missing values?
+- Which variables are outcomes?
+- Which variables are molecular measurements?
+
+# Common Failure Modes
+
+- Treating character columns as meaningful categories without checking spelling or levels.
+- Ignoring missing values because functions return `NA`.
+- Using row numbers as sample identifiers.
+- Hard-coding absolute file paths that only work on one computer.
+- Writing code once interactively but not turning repeated checks into functions.
+
+# Exercises
+
+1. Create a vector containing five gene symbols relevant to your biology area.
+2. Convert `ER_status` in METABRIC to a factor and count its levels.
+3. Write a function called `fraction_missing()` that returns the fraction of missing values in a vector.
+4. Use your function to identify the five METABRIC columns with the highest missingness.
+5. Use `here()` to load `data/clinical.csv` and check whether `patientID` is unique.
+
+# Key Takeaways
+
+- R objects should be named after the biological thing they represent.
+- Vectors, factors, and tibbles are the basic building blocks for this course.
+- Functions make data validation repeatable.
+- Stable paths and identifier checks prevent many downstream analysis errors.
+
+# Reproducibility
+
+```{r session-info}
+sessionInfo()
+```

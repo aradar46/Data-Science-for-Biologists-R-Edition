@@ -1,0 +1,44 @@
+Type: Project
+Package: data-science-for-biologists-az
+Title: Data Science for Biologists Course Materials
+Version: 0.1.0
+Description: R Markdown course materials for biological data science, clinical data analysis, omics workflows, biomedical machine learning, and reproducible research.
+Encoding: UTF-8
+Depends:
+    R (>= 4.1)
+Imports:
+    AER,
+    broom,
+    cluster,
+    corrplot,
+    factoextra,
+    GGally,
+    ggpubr,
+    ggraph,
+    here,
+    knitr,
+    maps,
+    palmerpenguins,
+    ranger,
+    rmarkdown,
+    rpart,
+    rpart.plot,
+    scales,
+    survival,
+    survminer,
+    themis,
+    tidygraph,
+    tidymodels,
+    tidyverse,
+    vip,
+    visNetwork,
+    writexl
+Suggests:
+    airway,
+    apeglm,
+    DESeq2,
+    EnhancedVolcano,
+    fgsea,
+    limma,
+    pheatmap,
+    Seurat

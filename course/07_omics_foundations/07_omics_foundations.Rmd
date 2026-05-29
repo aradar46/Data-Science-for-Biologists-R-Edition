@@ -1,0 +1,417 @@
+---
+title: "Module 7 - Omics Foundations"
+output:
+  html_document:
+    toc: true
+    toc_depth: 2
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  message = FALSE,
+  warning = FALSE,
+  fig.width = 8,
+  fig.height = 5
+)
+
+set.seed(42)
+```
+
+# Biological Question
+
+How do we turn a high-dimensional expression matrix into defensible biological evidence without mixing up assay types, samples, identifiers, or statistical assumptions?
+
+# Learning Objectives
+
+By the end of this module, learners should be able to:
+
+- distinguish RNA-seq counts, microarray intensities, proteomics intensities, and single-cell matrices,
+- validate sample metadata and omics matrix alignment,
+- separate raw data, normalized data, transformed data, and model-ready data,
+- perform basic omics quality control with missingness, distributions, PCA, and sample outlier checks,
+- run a probe-level differential association analysis for continuous expression data,
+- apply multiple-testing correction and interpret effect sizes,
+- explain why probe identifiers are not automatically gene symbols,
+- create a ranked molecular result table for downstream interpretation.
+
+# Prerequisites
+
+- Module 2: data wrangling and validation.
+- Module 4: statistical reasoning and multiple testing.
+- Module 6: high-dimensional biomedical modeling.
+- Packages: `tidyverse`, `here`, `limma`, `scales`.
+- Datasets: `data/clinical.csv`, `data/omics.csv`.
+
+# Setup
+
+```{r packages}
+library(tidyverse)
+library(here)
+library(limma)
+library(scales)
+```
+
+# Omics Data Are Not One Data Type
+
+Different omics assays create different numbers. The method must match the measurement process.
+
+```{r assay-comparison}
+tribble(
+  ~assay_type, ~typical_values, ~common_question, ~common_modeling_family,
+  "Bulk RNA-seq", "Integer read counts", "Which genes change between conditions?", "Negative binomial models, such as DESeq2 or edgeR",
+  "Microarray", "Continuous probe intensities", "Which probes differ between conditions?", "Linear models, often limma",
+  "Proteomics", "Continuous protein intensities with missingness", "Which proteins differ in abundance?", "Linear models, missingness-aware workflows",
+  "Single-cell RNA-seq", "Sparse cell-by-gene counts", "Which cell states or clusters differ?", "Single-cell QC, normalization, clustering, differential testing"
+)
+```
+
+The bundled `omics.csv` file is a continuous expression matrix with probe IDs as columns. It should not be treated as RNA-seq count data.
+
+# Data Input and Validation
+
+The unit of analysis is the patient. Each patient has one clinical row and one expression row.
+
+```{r load-data}
+clinical <- read_csv(here("data", "clinical.csv"), show_col_types = FALSE)
+omics <- read_csv(here("data", "omics.csv"), show_col_types = FALSE)
+
+stopifnot(!anyDuplicated(clinical$patientID))
+stopifnot(!anyDuplicated(omics$patientID))
+stopifnot(setequal(clinical$patientID, omics$patientID))
+
+omics_aligned <- omics %>%
+  slice(match(clinical$patientID, patientID))
+
+stopifnot(identical(clinical$patientID, omics_aligned$patientID))
+```
+
+```{r build-metadata-and-matrix}
+sample_metadata <- clinical %>%
+  transmute(
+    patientID,
+    treatment_group = factor(
+      if_else(treatment == 1, "standard_plus_chemo", "standard"),
+      levels = c("standard", "standard_plus_chemo")
+    ),
+    follow_up_years = time,
+    status_label = factor(
+      if_else(status == 1, "event", "censored"),
+      levels = c("censored", "event")
+    )
+  )
+
+expression_matrix <- omics_aligned %>%
+  select(-patientID) %>%
+  as.matrix()
+
+rownames(expression_matrix) <- omics_aligned$patientID
+
+stopifnot(all(vapply(as.data.frame(expression_matrix), is.numeric, logical(1))))
+stopifnot(identical(rownames(expression_matrix), sample_metadata$patientID))
+
+tibble(
+  patients = nrow(expression_matrix),
+  expression_probes = ncol(expression_matrix),
+  missing_expression_values = sum(is.na(expression_matrix)),
+  minimum_expression = min(expression_matrix, na.rm = TRUE),
+  maximum_expression = max(expression_matrix, na.rm = TRUE)
+)
+```
+
+# Raw, Normalized, Transformed, and Model-Ready
+
+These terms are often mixed together. Keep them separate.
+
+```{r data-states}
+tribble(
+  ~state, ~example, ~why_it_matters,
+  "Raw", "FASTQ reads, CEL files, or raw count matrices", "Closest to instrument output; often unsuitable for direct modeling",
+  "Normalized", "Library-size-adjusted counts or normalized microarray intensities", "Makes samples more comparable under assay-specific assumptions",
+  "Transformed", "Log counts, variance-stabilized counts, or scaled intensities", "Improves visualization or model assumptions",
+  "Model-ready", "A matrix aligned to metadata after filtering and documented preprocessing", "The exact object used for statistics or machine learning"
+)
+```
+
+For this course dataset, `omics.csv` is already a processed continuous matrix. We can do QC and linear modeling, but we cannot infer raw RNA-seq library sizes or run count-based differential expression from it.
+
+# Quality Control 1: Missingness and Distributions
+
+Omics QC asks whether samples and probes look comparable enough for the planned analysis.
+
+```{r missingness-qc}
+sample_missingness <- tibble(
+  patientID = rownames(expression_matrix),
+  missing_values = rowSums(is.na(expression_matrix)),
+  missing_fraction = missing_values / ncol(expression_matrix)
+) %>%
+  left_join(sample_metadata, by = "patientID")
+
+sample_missingness %>%
+  arrange(desc(missing_fraction)) %>%
+  slice_head(n = 10)
+```
+
+```{r sample-density}
+selected_patients <- sample(rownames(expression_matrix), size = 16)
+
+expression_matrix[selected_patients, , drop = FALSE] %>%
+  as_tibble(rownames = "patientID") %>%
+  pivot_longer(-patientID, names_to = "probe_id", values_to = "expression") %>%
+  ggplot(aes(x = expression, group = patientID)) +
+  geom_density(alpha = 0.35, color = "#2a6f97") +
+  labs(
+    title = "Expression distributions for a subset of patients",
+    x = "Processed expression intensity",
+    y = "Density"
+  ) +
+  theme_minimal()
+```
+
+If one sample has a radically different distribution, check sample processing, batch, extraction quality, and whether the sample ID was swapped.
+
+# Quality Control 2: PCA
+
+PCA summarizes major sources of expression variation. It does not prove biology by itself; it is a diagnostic view.
+
+```{r pca}
+expression_pca <- prcomp(
+  expression_matrix,
+  center = TRUE,
+  scale. = FALSE
+)
+
+variance_explained <- expression_pca$sdev^2 / sum(expression_pca$sdev^2)
+
+pca_scores <- as_tibble(expression_pca$x[, 1:5], rownames = "patientID") %>%
+  left_join(sample_metadata, by = "patientID")
+
+pca_scores %>%
+  ggplot(aes(x = PC1, y = PC2, color = treatment_group, shape = status_label)) +
+  geom_point(alpha = 0.75, size = 2) +
+  labs(
+    title = "PCA of processed expression matrix",
+    x = paste0("PC1 (", percent(variance_explained[1], accuracy = 0.1), ")"),
+    y = paste0("PC2 (", percent(variance_explained[2], accuracy = 0.1), ")"),
+    color = "Treatment",
+    shape = "Outcome"
+  ) +
+  theme_minimal()
+```
+
+```{r pca-outliers}
+pca_scores %>%
+  mutate(distance_from_center = sqrt(PC1^2 + PC2^2 + PC3^2 + PC4^2 + PC5^2)) %>%
+  arrange(desc(distance_from_center)) %>%
+  select(patientID, treatment_group, status_label, distance_from_center) %>%
+  slice_head(n = 10)
+```
+
+Large PCA distances are not automatic exclusions. They are a request for investigation.
+
+# Quality Control 3: High-Variance Probe Heatmap
+
+Heatmaps are useful for patterns, but they are easy to overinterpret. This plot uses the most variable probes only as a QC view.
+
+```{r high-variance-heatmap}
+probe_variance <- apply(expression_matrix, 2, var, na.rm = TRUE)
+top_variable_probes <- names(sort(probe_variance, decreasing = TRUE))[1:30]
+
+heatmap_patients <- sample_metadata %>%
+  arrange(treatment_group, status_label, patientID) %>%
+  slice(round(seq(1, n(), length.out = 60))) %>%
+  pull(patientID)
+
+heatmap_scaled <- scale(expression_matrix[heatmap_patients, top_variable_probes, drop = FALSE])
+
+as_tibble(heatmap_scaled, rownames = "patientID") %>%
+  pivot_longer(-patientID, names_to = "probe_id", values_to = "scaled_expression") %>%
+  mutate(
+    patientID = factor(patientID, levels = heatmap_patients),
+    probe_id = factor(probe_id, levels = rev(top_variable_probes))
+  ) %>%
+  ggplot(aes(x = patientID, y = probe_id, fill = scaled_expression)) +
+  geom_tile() +
+  scale_fill_gradient2(low = "#4575b4", mid = "white", high = "#d73027", midpoint = 0) +
+  labs(
+    title = "Top variable probes across selected patients",
+    x = "Patients ordered by treatment and outcome",
+    y = "Probe ID",
+    fill = "Scaled\nexpression"
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank()
+  )
+```
+
+# Differential Association for Continuous Expression
+
+For this processed microarray-style matrix, a linear modeling framework is appropriate. The model below estimates the treatment association for every probe.
+
+```{r limma-model}
+design <- model.matrix(~ treatment_group, data = sample_metadata)
+
+fit <- lmFit(t(expression_matrix), design)
+fit <- eBayes(fit)
+
+limma_results <- topTable(
+  fit,
+  coef = "treatment_groupstandard_plus_chemo",
+  number = Inf,
+  sort.by = "P"
+) %>%
+  rownames_to_column("probe_id") %>%
+  as_tibble() %>%
+  mutate(
+    neg_log10_p = -log10(pmax(P.Value, .Machine$double.xmin)),
+    significant = adj.P.Val < 0.05,
+    rank_score = sign(logFC) * neg_log10_p
+  )
+
+limma_results %>%
+  select(probe_id, logFC, AveExpr, t, P.Value, adj.P.Val) %>%
+  slice_head(n = 10)
+```
+
+`logFC` is the estimated expression difference for `standard_plus_chemo` relative to `standard` in the processed expression scale. It is not a causal chemotherapy effect unless the study design supports that claim.
+
+# Multiple Testing and Effect Size
+
+Omics analyses test many probes at once. A small p-value from one probe is not enough; false discovery control is part of the analysis.
+
+```{r multiple-testing-summary}
+tibble(
+  total_probes_tested = nrow(limma_results),
+  probes_with_raw_p_below_0_05 = sum(limma_results$P.Value < 0.05, na.rm = TRUE),
+  probes_with_fdr_below_0_05 = sum(limma_results$adj.P.Val < 0.05, na.rm = TRUE),
+  probes_with_fdr_below_0_10 = sum(limma_results$adj.P.Val < 0.10, na.rm = TRUE),
+  largest_absolute_effect = max(abs(limma_results$logFC), na.rm = TRUE)
+)
+```
+
+```{r volcano}
+limma_results %>%
+  mutate(
+    result_group = case_when(
+      adj.P.Val < 0.05 & logFC > 0 ~ "higher in standard_plus_chemo",
+      adj.P.Val < 0.05 & logFC < 0 ~ "lower in standard_plus_chemo",
+      TRUE ~ "not FDR-significant"
+    )
+  ) %>%
+  ggplot(aes(x = logFC, y = neg_log10_p, color = result_group)) +
+  geom_point(alpha = 0.65, size = 1.7) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "gray40") +
+  labs(
+    title = "Probe-level treatment association volcano plot",
+    x = "Estimated expression difference",
+    y = "-log10(p-value)",
+    color = NULL
+  ) +
+  theme_minimal()
+```
+
+# Confounding Check
+
+Before interpreting treatment-associated probes, ask whether treatment is tangled with outcome or follow-up patterns.
+
+```{r confounding-check}
+sample_metadata %>%
+  count(treatment_group, status_label) %>%
+  group_by(treatment_group) %>%
+  mutate(fraction = n / sum(n)) %>%
+  ungroup()
+```
+
+```{r follow-up-by-treatment}
+sample_metadata %>%
+  ggplot(aes(x = treatment_group, y = follow_up_years, fill = treatment_group)) +
+  geom_boxplot(alpha = 0.75, show.legend = FALSE) +
+  labs(
+    title = "Follow-up time by treatment group",
+    x = NULL,
+    y = "Follow-up time in years"
+  ) +
+  theme_minimal()
+```
+
+If treatment assignment reflects disease severity, clinical site, assay batch, or follow-up differences, the expression associations may reflect confounding rather than treatment biology.
+
+# Identifier and Annotation Caveat
+
+The expression columns are probe identifiers, such as `200008_s_at`, not automatically gene symbols. Pathway analysis and biological naming require a documented annotation source.
+
+```{r probe-id-examples}
+tibble(
+  probe_id = colnames(expression_matrix)[1:8],
+  learner_warning = "Do not treat this identifier as a gene symbol until it is mapped with a documented annotation source."
+)
+```
+
+Annotation decisions should record:
+
+- identifier type,
+- array or assay platform,
+- annotation database and version,
+- one-to-many mappings,
+- probes that map to no gene or multiple genes.
+
+# Ranked Results for Downstream Interpretation
+
+Many pathway methods start from a ranked list. Here the ranking is real, but it is still a probe-level ranking until annotation is added.
+
+```{r ranked-results}
+ranked_probe_results <- limma_results %>%
+  arrange(desc(rank_score)) %>%
+  select(probe_id, rank_score, logFC, P.Value, adj.P.Val)
+
+ranked_probe_results %>%
+  slice_head(n = 12)
+```
+
+This replaces the dummy ranked gene list pattern from the legacy omics track. A later pathway module should either map probes to gene IDs with a reproducible annotation source or use a dataset that already provides stable gene identifiers.
+
+# Interpretation Checkpoint
+
+Answer these before reporting an omics result:
+
+1. What is the unit of analysis?
+2. What assay type produced the values?
+3. Are sample IDs aligned to metadata?
+4. Which preprocessing state is being modeled?
+5. Which coefficient answers the biological question?
+6. How many tests were performed?
+7. Which identifier type is being interpreted?
+8. What confounding or batch variables could explain the pattern?
+
+# Exercises
+
+1. Repeat the PCA plot using PC2 and PC3. Does the treatment pattern look stronger, weaker, or unchanged?
+2. Change the limma design to test `status_label` instead of `treatment_group`. Explain why this is an association with observed event status, not a valid survival analysis.
+3. Find the 20 probes with the largest absolute `logFC`. How many are FDR-significant?
+4. Write a two-sentence caption for the volcano plot that mentions effect size, multiple testing, and probe identifiers.
+5. List the metadata columns you would request from the laboratory before trusting a publication-level differential expression result.
+
+# Common Failure Modes
+
+- Running RNA-seq count methods on processed microarray intensities.
+- Joining metadata and expression rows by position instead of validated sample IDs.
+- Selecting top probes before train/test splitting in a predictive model.
+- Treating FDR-significant probes as causal biology.
+- Calling probe IDs gene symbols without annotation.
+- Ignoring batch, site, extraction date, RNA quality, or platform version.
+
+# Key Takeaways
+
+- Omics analysis starts with assay identity and sample alignment, not a package call.
+- The bundled expression matrix is appropriate for continuous-expression QC and linear modeling.
+- Multiple testing correction is mandatory for probe-level scans.
+- Ranked molecular results are useful only when their identifier type and annotation limits are explicit.
+- Omics findings should be reported as evidence under assumptions, not as automatic mechanisms.
+
+# Reproducibility
+
+```{r session-info}
+sessionInfo()
+```

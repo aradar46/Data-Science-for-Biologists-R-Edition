@@ -2,161 +2,154 @@
 
 # Data Science for Biologists — R Edition
 
-> A complete, R-native adaptation of the *Data Science in Python* course originally developed by the **Data Science Academy at AstraZeneca**. Every lecture, solution, and student challenge has been rewritten from the ground up using **R**, **tidyverse**, and **tidymodels** — no Python required.
+This repository is being rebuilt into a rigorous, biology-centered data science course in R. The current material contains useful lectures and datasets, but the course is under active redesign because the old structure is too notebook-like, the advanced tracks are too shallow, and several lessons use placeholder or non-executable examples.
 
----
+The redesign plan is documented in [project_detail/00_course_audit_and_redesign_plan.md](project_detail/00_course_audit_and_redesign_plan.md).
 
-## Background & Motivation
+## Course Goal
 
-The original course — *Data Science in Python* — was a 7-week training programme run by the Data Science Academy, AstraZeneca (Cambridge, UK), covering data handling, visualisation, statistics, and machine learning through Python/pandas/scikit-learn. It was delivered multiple times between 2020 and 2022 and used a real-world breast cancer dataset (METABRIC) as the running example.
+The target learner is a biologist or life scientist who wants to analyze clinical, tabular, and omics data with defensible statistical and machine learning workflows.
 
-Many biologists and life scientists work primarily in R, using it for bioinformatics, statistics, and reproducible research. This repository is a **full R conversion** of that curriculum, providing the same conceptual coverage and pedagogical structure, but expressed entirely in idiomatic R:
+By the end of the redesigned course, learners should be able to:
 
-| Original (Python) | R Equivalent |
-|---|---|
-| `pandas` DataFrame | `tibble` / `tidyverse` |
-| `matplotlib` / `seaborn` | `ggplot2` |
-| `scikit-learn` | `tidymodels` |
-| Jupyter Notebook (`.ipynb`) | R Markdown (`.Rmd`) |
-| `numpy` arrays | R vectors / matrices |
-| `statsmodels` | `stats` / `broom` |
-| `networkx` | `tidygraph` / `ggraph` |
+- turn a biological question into an analysis plan,
+- validate and join clinical and omics datasets,
+- visualize biological data clearly,
+- choose appropriate statistical tests and models,
+- build leakage-safe predictive models with `tidymodels`,
+- analyze differential expression and pathway enrichment results,
+- handle survival outcomes and high-dimensional omics predictors,
+- produce reproducible R Markdown reports.
 
----
+## Current Repository Structure
 
-## What's in This Repository
-
-```
+```text
 data-science-for-biologists-AZ/
-│
-├── notebooks/            ← R Markdown lecture & solution files (weeks 0–7)
-│   └── week2_extra_DataVisualisation/  ← 15 supplementary ggplot2 notebooks
-│
-├── challenge/            ← Student project examples in R
-│   ├── KatarzynaNurzynska/
-│   └── RobertShaw/
-│
-├── data/                 ← Shared datasets used across all weeks
-│   ├── metabric_clinical_and_expression_data.csv   ← Primary teaching dataset
-│   ├── clinical.csv / omics.csv                    ← Week 0 challenge datasets
-│   └── imagine_lyrics.txt                          ← Week 0 string exercise
-│
-├── img/                  ← Images used in lectures
-├── render_all.R          ← Script to render all notebooks to HTML
-├── LICENSE               ← Apache License 2.0
-└── README.md             ← This file
+├── notebooks/                         Current core R Markdown notebooks, weeks 0-7
+│   └── week2_extra_DataVisualisation/ Optional visualization reference notebooks
+├── advanced_ml_track/                 Draft advanced ML notebooks under redesign
+├── omics_track/                       Draft omics notebooks under redesign
+├── engineering_track/                 Draft reproducibility notebooks under redesign
+├── data/                              Shared teaching datasets
+├── img/                               Images used in existing lectures
+├── project_detail/                    Audit, redesign, and notebook standards
+├── scripts/                           Dependency and validation scripts
+├── templates/                         New notebook template
+├── render_all.R                       Render all R Markdown notebooks
+└── README.md
 ```
 
----
+## Main Teaching Datasets
 
-## Course Structure
+The course currently includes:
 
-| Week | Topic | R Notebooks |
-|:----:|-------|-------------|
-| **0** | R basics, functions, I/O | `week0_lecture.Rmd`, `week0_solutions.Rmd`, `week0_challenge.Rmd`, `week0_materials.Rmd` |
-| **1** | Data handling with tidyverse | `week1_lecture.Rmd`, `week1_solutions.Rmd` |
-| **2** | Data visualisation with ggplot2 | `week2_lecture.Rmd` + 15 extra notebooks in `week2_extra_DataVisualisation/` |
-| **3** | Key concepts in statistics & ML | `week3_lecture.Rmd` *(theory, no code)* |
-| **4** | Statistical tests & linear modelling | `week4_lecture.Rmd`, `week4_solution.Rmd` |
-| **5** | Machine Learning part 1 (regression) | `week5_lecture.Rmd`, `week5_lecture_2.Rmd`, `week5_solutions.Rmd`, `week5_solutions_2.Rmd` |
-| **6** | Machine Learning part 2 (classification, random forests) | `week6_lecture.Rmd`, `week6_solutions.Rmd` |
-| **7** | Networks, graphs & METABRIC case study | `week7_lecture.Rmd`, `week7_Metabric_data_analysis.Rmd` |
+- `data/metabric_clinical_and_expression_data.csv`: METABRIC clinical and selected expression features for 1,904 breast cancer patients.
+- `data/clinical.csv`: survival data for 614 breast cancer patients.
+- `data/omics.csv`: microarray expression data for the same 614 patients, with 1,691 probe columns.
+- `data/imagine_lyrics.txt` and `data/programming.txt`: small text files for early R/string exercises.
 
-### Supplementary ggplot2 Notebooks (Week 2 Extra)
+The redesigned capstone will use `clinical.csv` plus `omics.csv` as the main integrative project.
 
-A series of focused notebooks covering advanced `ggplot2` topics:
-line plots, scatter plots, error bars, density plots, histograms, legends, colourbars, multi-panel layouts, text annotation, tick customisation, themes, 3D plotting, geographic data, advanced statistical visualisation, and further resources.
+## Redesign Roadmap
 
----
+The planned course structure is:
 
-## Primary Dataset — METABRIC
-
-The **Molecular Taxonomy of Breast Cancer International Consortium (METABRIC)** dataset is used as the running example throughout the course. It contains clinical variables and gene expression data for ~1,900 breast cancer patients.
-
-> Source: [Pereira et al., *Nature Communications*, 2016](https://www.nature.com/articles/ncomms11479)
-
-The dataset is located at `data/metabric_clinical_and_expression_data.csv`.
-
----
+| Module | Topic | Status |
+|---:|---|---|
+| 0 | Orientation and scientific workflow | Added in `course/00_orientation/` |
+| 1 | R foundations for biological data | Started in `course/01_r_foundations/` |
+| 2 | Data wrangling and validation | Added in `course/02_data_wrangling/` |
+| 3 | Visualization for biology | Added in `course/03_visualization/` |
+| 4 | Statistical reasoning and experimental design | Added in `course/04_statistics/` |
+| 5 | Modeling foundations with `tidymodels` | Added in `course/05_modeling_foundations/` |
+| 6 | Biomedical machine learning | Added in `course/06_biomedical_ml/` |
+| 7 | Omics foundations | Added in `course/07_omics_foundations/` |
+| 8 | Survival, omics integration, and interpretation | New integrative module |
+| 9 | Reproducible engineering for biologists | Replaces `engineering_track/` |
+| 10 | Capstone | Added in `course/10_capstone/` |
 
 ## Getting Started
 
 ### Prerequisites
 
-You need **R** (≥ 4.1) and **RStudio** installed.
+Install:
 
-1. **Install R:** [https://cran.r-project.org/](https://cran.r-project.org/)
-2. **Install RStudio:** [https://posit.co/download/rstudio-desktop/](https://posit.co/download/rstudio-desktop/)
+- R 4.1 or newer
+- RStudio or another R-capable IDE
 
 ### Install Required Packages
 
-Open RStudio and run the following once:
+From the repository root, run:
 
 ```r
-install.packages(c(
-  "tidyverse", "tidymodels", "broom", "ggpubr", "GGally",
-  "ranger", "vip", "rpart", "palmerpenguins",
-  "tidygraph", "ggraph", "visNetwork",
-  "survival", "survminer", "factoextra",
-  "AER", "corrplot", "cluster", "writexl",
-  "maps", "scales"
-))
+source("scripts/install_dependencies.R")
 ```
 
-### Clone the Repository
+The dependency script installs CRAN packages first, then Bioconductor packages. Some advanced omics packages are large, so installation can take time.
 
-```bash
-git clone https://github.com/YOUR-USERNAME/data-science-for-biologists-AZ.git
-cd data-science-for-biologists-AZ
-```
+### Render Notebooks
 
-### Open and Run a Notebook
-
-1. Open RStudio
-2. Navigate to `notebooks/`
-3. Open any `.Rmd` file (e.g., `week1_lecture.Rmd`)
-4. Click **Knit** to render it to HTML, or run chunks interactively
-
-### Render All Notebooks at Once
+Render every current `.Rmd` file:
 
 ```r
 source("render_all.R")
+render_course()
 ```
 
----
+Run the validation script from a shell:
 
-## Student Challenges
+```bash
+Rscript scripts/check_course.R
+```
 
-The `challenge/` folder contains real student project submissions that were adapted to R. These demonstrate how to apply course concepts to custom datasets:
+Rendered HTML files and `render_report.csv` are written to `rendered_notebooks/`.
 
-- **KatarzynaNurzynska** — METABRIC survival and subtype analysis (`week8_Metabric_data_analysis.Rmd`)
-- **RobertShaw** — Particle size data processing and reporting (`G3_example_DEMO.Rmd`)
+Render a single notebook:
 
----
+```r
+source("render_all.R")
+render_course("notebooks/week1_lecture.Rmd")
+```
+
+## Notebook Standard
+
+New and rewritten notebooks should follow:
+
+- [project_detail/01_notebook_standards.md](project_detail/01_notebook_standards.md)
+- [templates/course_notebook_template.Rmd](templates/course_notebook_template.Rmd)
+
+Core notebooks must be executable, use real course datasets for main examples, validate data before analysis, include interpretation checkpoints, and end with reproducibility information.
+
+## Current Caveats
+
+The repository is in transition.
+
+- Several advanced, omics, and engineering notebooks are draft-quality.
+- Some current notebooks rely on optional packages or unavailable external datasets.
+- Some existing notebooks use placeholder data or `eval=FALSE`.
+- The old `challenge/` folder is not present in the current working tree.
+
+These gaps are tracked in the redesign plan.
 
 ## License
 
-This project is licensed under the **Apache License 2.0** — see the [LICENSE](LICENSE) file for full terms.
+This project is licensed under the Apache License 2.0. See [LICENSE](LICENSE).
 
-You are free to use, modify, and distribute this material, including for commercial training, as long as you retain the licence notice and document any changes you make.
+## Original Course and Credits
 
----
+The original Python course was developed by the Data Science Academy at AstraZeneca.
 
-## Original Course & Credits
+Previous public course iterations:
 
-The R conversion is based on the *Data Science in Python* course by the **Data Science Academy, AstraZeneca**:
+- [June-July 2020](https://github.com/semacu/data-science-python)
+- [January-February 2021](https://github.com/semacu/202101-data-science-python)
+- [May-June 2021](https://github.com/semacu/202105-data-science-python)
+- [October-November 2021](https://github.com/semacu/202110-data-science-python)
 
-- **Original trainers:** Gabriella Rustici, Sergio Martínez Cuesta, Leo Souliotis, Katarzyna Nurzynska, Michał Oziębło, Daniel Roythorne, Samuel Lewis, Caterina Darcy
-- **Previous course iterations:**
-  - [June–July 2020](https://github.com/semacu/data-science-python)
-  - [January–February 2021](https://github.com/semacu/202101-data-science-python)
-  - [May–June 2021](https://github.com/semacu/202105-data-science-python)
-  - [October–November 2021](https://github.com/semacu/202110-data-science-python)
+Further references:
 
-**Further references:**
-
-- [CRUK-CI Introduction to R course](https://bioinformatics-core-shared-training.github.io/r-intro/)
+- [R for Data Science, 2nd edition](https://r4ds.hadley.nz/)
 - [tidyverse documentation](https://www.tidyverse.org/)
 - [tidymodels documentation](https://www.tidymodels.org/)
 - [ggplot2 documentation](https://ggplot2.tidyverse.org/)
-- [R for Data Science (2nd ed.)](https://r4ds.hadley.nz/) — Wickham, Çetinkaya-Rundel & Grolemund
+- [Bioconductor](https://www.bioconductor.org/)
