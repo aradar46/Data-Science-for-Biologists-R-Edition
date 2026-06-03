@@ -1,67 +1,53 @@
-# Data Science for Biologists — R Edition
+# R for Biologists — Data Science, Bioinformatics, and Machine Learning in R
 
-**A complete, executable R curriculum for biologists and life scientists learning data science, statistical modeling, machine learning, and omics analysis.**
+**A free, complete, executable R course covering data wrangling, statistics, machine learning with tidymodels, omics analysis, survival analysis, and reproducible bioinformatics — built on real clinical and expression datasets.**
 
-Built on real breast cancer datasets. Every notebook runs. No placeholder code.
+No placeholder code. Every notebook runs. Beginner-friendly.
 
 ---
 
-## Never Opened RStudio Before? Start Here
+## Getting Started
 
-You do not need any prior programming experience to begin. Follow these four steps once and you are ready.
+### Step 1 — Install R and RStudio (first time only)
 
-### Step 1 — Install R
+| | Link |
+|---|---|
+| **R** (the language) | https://cran.r-project.org — pick your OS, download, install |
+| **RStudio** (the editor) | https://posit.co/download/rstudio-desktop — free Desktop version |
 
-R is the programming language this course uses.
+### Step 2 — Get the course files
 
-1. Go to **https://cran.r-project.org/**
-2. Click your operating system (Windows / macOS / Linux)
-3. Download and run the installer
-4. Accept all defaults
+**No git?** Click the green **Code** button on GitHub → **Download ZIP** → unzip anywhere.
 
-### Step 2 — Install RStudio
-
-RStudio is the application you will write R code in (like Word is to text, RStudio is to R).
-
-1. Go to **https://posit.co/download/rstudio-desktop/**
-2. Download the free **RStudio Desktop** version
-3. Install it
-
-### Step 3 — Get the course files
-
-**Option A — Download as a ZIP (no git required)**
-
-1. Click the green **Code** button at the top of this GitHub page
-2. Click **Download ZIP**
-3. Unzip the folder somewhere you can find it (e.g. your Desktop)
-
-**Option B — Clone with git (if you have git installed)**
-
+**Have git?**
 ```bash
-git clone https://github.com/<username>/data-science-for-biologists-AZ.git
+git clone https://github.com/<username>/r-for-biologists.git
 ```
 
-### Step 4 — Open RStudio and set up the course
+### Step 3 — Install the course packages (once)
 
-1. Open RStudio
-2. Click **File → Open Project** (or **File → Open File** and navigate to the unzipped folder)
-3. In the **Console** pane at the bottom, paste these two lines and press Enter:
+Open RStudio. In the **Console** (bottom pane), run:
 
 ```r
 install.packages("renv")
-renv::restore()
+source("install_dependencies.R")
 ```
 
-This will install all required packages automatically. It takes a few minutes the first time.
+This installs every package the course uses. Takes a few minutes the first time. You never need to do it again.
 
-### Step 5 — Open your first notebook
+### Step 4 — Open a notebook and start learning
 
-1. In the **Files** panel (bottom-right), navigate to `course/01_r_foundations/`
-2. Click `01_r_foundations_for_biologists.Rmd`
-3. Click the **Knit** button at the top of the editor
-4. A rendered document will appear — you are ready to start
+In the **Files** panel (bottom-right in RStudio), go to `course/01_r_foundations/` and open `01_r_foundations_for_biologists.Rmd`.
 
-> **If you see a yellow bar asking to install packages**, click **Install**. If anything looks broken, run `renv::restore()` again in the Console.
+**How to use the notebooks:**
+- Each grey block is a **code chunk** — real, runnable R code
+- Click inside a chunk and press **Ctrl+Enter** (Windows/Linux) or **Cmd+Enter** (Mac) to run that line
+- Press **Ctrl+Shift+Enter** to run the whole chunk
+- Edit the code, change values, break things — that is how you learn
+- Read the text between chunks — it explains the biological reasoning behind each step
+
+You do not need to "knit" or "render" anything to learn from this course.
+Just open, read, run, edit, and experiment.
 
 ---
 
@@ -129,42 +115,15 @@ The `clinical.csv` + `omics.csv` pair runs as the integrative project arc across
 ## Repository Structure
 
 ```
-data-science-for-biologists-AZ/
-├── course/          11 R Markdown modules (00–10), each self-contained
-├── exercises/       8 exercise sheets (Modules 1–8) in Markdown
-├── solutions/       Executable R Markdown solutions with explanations
-├── data/            Bundled clinical and expression datasets
-├── scripts/         install_dependencies.R, check_course.R
-├── render_all.R     Renders all notebooks from the command line
-├── renv.lock        Pinned package versions (R 4.5.0)
-└── DESCRIPTION      Declared project dependencies
+r-for-biologists/
+├── course/                   11 R Markdown modules (00–10), each self-contained
+├── exercises/                8 exercise sheets (Modules 1–8)
+├── solutions/                Executable R Markdown solutions with explanations
+├── data/                     Bundled clinical and expression datasets
+├── install_dependencies.R    Run once to install all required packages
+├── renv.lock                 Pinned package versions (R 4.5.0)
+└── DESCRIPTION               Package dependency declarations
 ```
-
----
-
-## Getting Started (for experienced R users)
-
-### Restore the exact R environment
-
-```r
-install.packages("renv")
-renv::restore()
-```
-
-### Render a single notebook
-
-```r
-source("render_all.R")
-render_course("course/01_r_foundations/01_r_foundations_for_biologists.Rmd")
-```
-
-### Validate all notebooks
-
-```bash
-Rscript scripts/check_course.R
-```
-
-All 17 notebooks (12 course + 5 solutions) render with zero failures.
 
 ---
 
@@ -191,7 +150,7 @@ This course enforces decisions that introductory courses typically skip:
 - **Censoring is handled correctly:** survival outcomes are never converted to binary logistic regression
 - **Every notebook validates its data:** patient IDs are aligned explicitly before any join or model
 - **Interpretation is separated from mechanism:** association ≠ causation, in-sample ≠ validated
-- **Every notebook renders from a clean R session:** confirmed by automated render check
+- **Every notebook is self-contained:** each file runs independently from top to bottom with no hidden state
 
 ---
 

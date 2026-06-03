@@ -1,5 +1,5 @@
 ---
-title: "Module 7 - Omics Foundations"
+title: "R for Biologists | Module 7 — Omics Analysis: Differential Expression with limma and Microarray Data"
 output:
   html_document:
     toc: true

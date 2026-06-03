@@ -1,6 +1,6 @@
 Type: Project
 Package: data-science-for-biologists-az
-Title: Data Science for Biologists — R Course: Statistics, Machine Learning, Omics, and Survival Analysis
+Title: R for Biologists — Data Science, Bioinformatics, Machine Learning, and Omics Analysis in R
 Version: 1.0.0
 Description: A complete R curriculum for biologists and bioinformaticians covering data wrangling,
     visualization, statistical reasoning, tidymodels-based machine learning, omics analysis with
@@ -10,39 +10,17 @@ Encoding: UTF-8
 Depends:
     R (>= 4.1)
 Imports:
-    AER,
     broom,
-    cluster,
-    corrplot,
-    factoextra,
-    GGally,
-    ggpubr,
-    ggraph,
     glmnet,
     here,
-    knitr,
-    maps,
-    palmerpenguins,
+    limma,
+    pheatmap,
     ranger,
-    rmarkdown,
-    rpart,
-    rpart.plot,
+    renv,
     scales,
     survival,
     survminer,
     themis,
-    tidygraph,
     tidymodels,
     tidyverse,
-    vip,
-    visNetwork,
-    writexl
-Suggests:
-    airway,
-    apeglm,
-    DESeq2,
-    EnhancedVolcano,
-    fgsea,
-    limma,
-    pheatmap,
-    Seurat
+    vip

@@ -1,5 +1,5 @@
 ---
-title: "Module 9 - Reproducible Engineering for Biologists"
+title: "R for Biologists | Module 9 — Reproducible Research: renv, R Markdown, Docker, and Git"
 output:
   html_document:
     toc: true

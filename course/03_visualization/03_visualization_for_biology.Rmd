@@ -1,5 +1,5 @@
 ---
-title: "Module 3 - Visualization for Biology"
+title: "R for Biologists | Module 3 — Data Visualization for Biology with ggplot2"
 output:
   html_document:
     toc: true

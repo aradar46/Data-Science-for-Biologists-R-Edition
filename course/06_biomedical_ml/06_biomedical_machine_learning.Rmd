@@ -1,5 +1,5 @@
 ---
-title: "Module 6 - Biomedical Machine Learning"
+title: "R for Biologists | Module 6 — Biomedical Machine Learning: Elastic Net, Random Forest, and Omics Prediction"
 output:
   html_document:
     toc: true

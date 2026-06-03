@@ -1,5 +1,5 @@
 ---
-title: "Module 10 - Capstone Starter Notebook"
+title: "R for Biologists | Module 10 — Capstone Starter Notebook"
 output:
   html_document:
     toc: true

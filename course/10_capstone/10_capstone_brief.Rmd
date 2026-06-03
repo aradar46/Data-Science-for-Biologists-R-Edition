@@ -1,5 +1,5 @@
 ---
-title: "Module 10 - Capstone Brief"
+title: "R for Biologists | Module 10 — Capstone: Clinical and Omics Integration for Survival Prediction"
 output:
   html_document:
     toc: true

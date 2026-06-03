@@ -1,5 +1,5 @@
 ---
-title: "Module 0 - Course Orientation and Scientific Workflow"
+title: "R for Biologists | Module 0 — Scientific Workflow and Course Orientation"
 output:
   html_document:
     toc: true

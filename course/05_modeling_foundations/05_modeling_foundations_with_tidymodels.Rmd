@@ -1,5 +1,5 @@
 ---
-title: "Module 5 - Modeling Foundations with tidymodels"
+title: "R for Biologists | Module 5 — Machine Learning Foundations with tidymodels"
 output:
   html_document:
     toc: true
