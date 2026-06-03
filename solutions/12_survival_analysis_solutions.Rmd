@@ -1,5 +1,5 @@
 ---
-title: "Solutions — Module 11: Survival Analysis and Omics Integration"
+title: "Solutions — Module 12: Survival Analysis and Omics Integration"
 output:
   html_document:
     toc: true
@@ -27,7 +27,7 @@ expression_matrix <- omics_aligned %>% select(-patientID) %>% as.matrix()
 rownames(expression_matrix) <- omics_aligned$patientID
 ```
 
-# Solution 11.1 — Censoring scenarios
+# Solution 12.1 — Censoring scenarios
 
 1. **Event at 730 days** — observed event, status = 1, time = 730.
 2. **Alive at study end (day 1095)** — administrative censoring, status = 0, time = 1095.
@@ -36,7 +36,7 @@ rownames(expression_matrix) <- omics_aligned$patientID
 
 Cases 2 and 3 are administrative censoring (independent of prognosis). Cases 3 and 4 could be informative censoring.
 
-# Solution 11.2 — Kaplan-Meier interpretation
+# Solution 12.2 — Kaplan-Meier interpretation
 
 ```{r sol-8-2}
 surv_data <- clinical %>%
@@ -56,7 +56,7 @@ km_fit
 
 A significant log-rank p-value does not imply causal efficacy when treatment assignment is not randomised: patients in the chemotherapy group may differ systematically in disease severity, age, or centre — any of which could drive survival differences.
 
-# Solution 11.3 — Cox model extension
+# Solution 12.3 — Cox model extension
 
 ```{r sol-8-3}
 # Including time directly as a predictor is invalid: time is part of the outcome
@@ -70,7 +70,7 @@ print(ph_test)
 
 If the Schoenfeld p-value is large (> 0.05), there is no evidence against proportional hazards. A small p-value would suggest the treatment effect changes over the follow-up period.
 
-# Solution 11.4 — Validation split for omics Cox
+# Solution 12.4 — Validation split for omics Cox
 
 ```{r sol-8-4}
 set.seed(42)
@@ -109,9 +109,9 @@ tibble(
 )
 ```
 
-The gap between training and test C-index is the overfitting gap. Module 11 reported the in-sample C-index; this exercise demonstrates why that figure should never be used as an estimate of clinical utility.
+The gap between training and test C-index is the overfitting gap. Module 12 reported the in-sample C-index; this exercise demonstrates why that figure should never be used as an estimate of clinical utility.
 
-# Solution 11.5 — Risk group reporting (written answer)
+# Solution 12.5 — Risk group reporting (written answer)
 
 A median-split risk group derived from the same data used to fit the model cannot be presented as publishable evidence for a clinical biomarker for the following reasons.
 

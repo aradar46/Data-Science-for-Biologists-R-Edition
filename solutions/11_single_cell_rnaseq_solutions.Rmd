@@ -1,5 +1,5 @@
 ---
-title: "Solutions — Module 10: Single-Cell RNA-seq Analysis"
+title: "Solutions — Module 11: Single-Cell RNA-seq Analysis"
 output:
   html_document:
     toc: true
@@ -61,7 +61,7 @@ pbmc$cell_type <- Idents(pbmc)
 
 ---
 
-## Exercise 10.1 — Ribosomal Gene Profiling
+## Exercise 11.1 — Ribosomal Gene Profiling
 
 ### 1. Calculate ribosomal percentage
 
@@ -85,7 +85,7 @@ FeatureScatter(pbmc, feature1 = "percent_ribo", feature2 = "percent_mito")
 
 ---
 
-## Exercise 10.2 — Granular Clustering Resolution
+## Exercise 11.2 — Granular Clustering Resolution
 
 ### 1 & 2. Run clustering with resolution = 1.2
 
@@ -113,7 +113,7 @@ At resolution 1.2, we can see that the T-cell population is split into more gran
 
 ---
 
-## Exercise 10.3 — NK Cells vs. T Cells Differential Expression
+## Exercise 11.3 — NK Cells vs. T Cells Differential Expression
 
 ### 1. Run markers comparing NK cells vs. T cells
 
@@ -155,7 +155,7 @@ These are classic markers of natural killer (NK) cells and cytotoxic T lymphocyt
 
 ---
 
-## Exercise 10.4 — B Cell Antiviral Response in COVID-19
+## Exercise 11.4 — B Cell Antiviral Response in COVID-19
 
 ### 1 & 2. Run B Cell COVID-19 vs. Control DGE
 

@@ -1,10 +1,10 @@
-# Exercises — Module 9: Pathway Enrichment Analysis
+# Exercises — Module 10: Pathway Enrichment Analysis
 
-Work through these exercises after completing the Module 9 notebook.
+Work through these exercises after completing the Module 10 notebook.
 
 ---
 
-## Exercise 9.1 — Over-Representation Analysis (ORA) on Down-Regulated Genes
+## Exercise 10.1 — Over-Representation Analysis (ORA) on Down-Regulated Genes
 
 Perform Over-Representation Analysis (ORA) on the list of significant *down-regulated* genes (`sig_down`) using the `GO_Biological_Process_2023` database via `enrichR`. 
 
@@ -16,7 +16,7 @@ Perform Over-Representation Analysis (ORA) on the list of significant *down-regu
 
 ---
 
-## Exercise 9.2 — GSEA with KEGG Pathway Database
+## Exercise 10.2 — GSEA with KEGG Pathway Database
 
 In the tutorial, we used the MSigDB Hallmark signatures. For this exercise, load the KEGG pathways database signature from the local GMT file:
 `data/MSigDB_files/c2.cp.kegg.v6.2.symbols.gmt.txt`
@@ -28,7 +28,7 @@ In the tutorial, we used the MSigDB Hallmark signatures. For this exercise, load
 
 ---
 
-## Exercise 9.3 — ORA vs. GSEA Comparison
+## Exercise 10.3 — ORA vs. GSEA Comparison
 
 Compare the enrichment results for the pathway **HALLMARK_INFLAMMATORY_RESPONSE** (or its GO/KEGG equivalent) between your up-regulated ORA and your GSEA.
 
@@ -38,7 +38,7 @@ Compare the enrichment results for the pathway **HALLMARK_INFLAMMATORY_RESPONSE*
 
 ---
 
-## Exercise 9.4 — Impact of Gene Ranking Metrics on GSEA
+## Exercise 10.4 — Impact of Gene Ranking Metrics on GSEA
 
 Modify the gene ranking metric for GSEA to use the log2 fold change directly (`rank_score = log2FoldChange`) instead of incorporating the p-value.
 

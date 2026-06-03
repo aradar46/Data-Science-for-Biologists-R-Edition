@@ -1,0 +1,513 @@
+---
+title: "R for Biologists | Module 9 - Translatome Analysis with anota2seq"
+output:
+  html_document:
+    toc: true
+    toc_depth: 2
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  message = FALSE,
+  warning = FALSE,
+  fig.width = 8,
+  fig.height = 5
+)
+
+set.seed(42)
+```
+
+# Biological Question
+
+Which mRNAs change their translated output after estrogen receptor alpha knockdown, and which changes are explained by total RNA abundance versus translational control?
+
+This module uses the bundled `data/GSE134606_rawCounts.tsv.gz` count matrix. The columns are paired total cytosolic RNA and polysome-associated RNA samples. The analysis follows the logic from the `anota2seq` vignette in `/home/adr/Desktop/anota2seq.pdf`.
+
+# The Unforgettable Idea
+
+RNA abundance and protein output are related, but they are not the same measurement.
+
+- **Total RNA** asks: how much transcript exists?
+- **Polysome-associated RNA** asks: how much transcript is loaded onto translating ribosomes?
+- **Translatome analysis** asks: after accounting for total RNA, is the translated pool still different?
+
+The mistake is to treat `log2(polysome / total)` as a simple outcome and compare that ratio between groups. That ratio can create spurious correlation because total RNA appears inside both the ratio and the biological question. `anota2seq` avoids this by using regression: it models the relationship between translated RNA and total RNA feature by feature, then asks whether the condition changes what remains.
+
+# Learning Objectives
+
+By the end of this module, learners should be able to:
+
+- explain why total RNA and polysome-associated RNA must be analyzed as paired assays,
+- build explicit metadata for paired translatome data,
+- split a raw count table into total RNA and polysome RNA matrices in matched sample order,
+- check library sizes, zero counts, duplicate genes, and pair alignment before modeling,
+- explain why translational efficiency ratios can be misleading,
+- initialize an `Anota2seqDataSet` from raw RNA-seq counts,
+- run the complete `anota2seqRun()` workflow with model QC and residual outlier testing,
+- interpret the four main analysis labels: `translation`, `buffering`, `total mRNA`, and `translated mRNA`,
+- export interpretable result tables for project work.
+
+# Prerequisites
+
+- Module 2: data wrangling and validation.
+- Module 4: statistical reasoning and multiple testing.
+- Module 8: bulk RNA-seq differential expression.
+- Packages: `tidyverse`, `here`, `anota2seq`.
+- Dataset: `data/GSE134606_rawCounts.tsv.gz`.
+
+# Setup
+
+```{r packages}
+library(tidyverse)
+library(here)
+library(anota2seq)
+```
+
+# Input Data
+
+The raw file has one gene column and 16 sample columns.
+
+```{r load-data}
+counts_path <- here("data", "GSE134606_rawCounts.tsv.gz")
+
+raw_counts <- read_tsv(counts_path, show_col_types = FALSE)
+
+glimpse(raw_counts)
+```
+
+The sample names in this file are GEO-style identifiers, not biological labels. That is normal, but it means we must create a metadata table before any modeling.
+
+# Metadata: Make the Pairing Explicit
+
+In paired translatome experiments, sample metadata is not decoration. It is the analysis plan.
+
+The columns alternate total cytosolic RNA and polysome-associated RNA. There are four `shCtrl` pairs followed by four `shERa` pairs. The mapping below follows the GEO sample titles for GSE134606, where `cyto_*` samples are total cytosolic RNA and `poly_*` samples are polysome-associated RNA.
+
+```{r sample-metadata}
+sample_metadata <- tribble(
+  ~raw_column,   ~condition, ~replicate, ~assay,
+  "P12959_1001", "shCtrl",   1,          "total",
+  "P12959_1002", "shCtrl",   1,          "polysome",
+  "P12959_1003", "shCtrl",   2,          "total",
+  "P12959_1004", "shCtrl",   2,          "polysome",
+  "P12959_1005", "shCtrl",   3,          "total",
+  "P12959_1006", "shCtrl",   3,          "polysome",
+  "P12959_1007", "shCtrl",   4,          "total",
+  "P12959_1008", "shCtrl",   4,          "polysome",
+  "P12959_1009", "shERa",    1,          "total",
+  "P12959_1010", "shERa",    1,          "polysome",
+  "P12959_1011", "shERa",    2,          "total",
+  "P12959_1012", "shERa",    2,          "polysome",
+  "P12959_1013", "shERa",    3,          "total",
+  "P12959_1014", "shERa",    3,          "polysome",
+  "P12959_1015", "shERa",    4,          "total",
+  "P12959_1016", "shERa",    4,          "polysome"
+) %>%
+  mutate(
+    condition = factor(condition, levels = c("shCtrl", "shERa")),
+    assay = factor(assay, levels = c("total", "polysome")),
+    pair_id = str_c(condition, "_rep", replicate),
+    clean_sample = pair_id
+  )
+
+sample_metadata
+```
+
+Validate the metadata against the count table.
+
+```{r validate-columns}
+count_columns <- setdiff(names(raw_counts), "geneSymbol")
+
+stopifnot(!anyDuplicated(sample_metadata$raw_column))
+stopifnot(base::setequal(count_columns, sample_metadata$raw_column))
+```
+
+# Gene Cleaning
+
+Gene symbols should identify rows. Some public count matrices contain duplicated gene symbols, so we collapse duplicates by summing counts. This is a simple and transparent policy for a teaching dataset.
+
+```{r clean-genes}
+counts_clean <- raw_counts %>%
+  filter(!is.na(geneSymbol), geneSymbol != "") %>%
+  group_by(geneSymbol) %>%
+  summarise(across(all_of(count_columns), ~sum(.x, na.rm = TRUE)), .groups = "drop")
+
+tibble(
+  raw_rows = nrow(raw_counts),
+  unique_gene_symbols = nrow(counts_clean),
+  duplicated_gene_rows_removed_by_summing = nrow(raw_counts) - nrow(counts_clean)
+)
+```
+
+Convert the cleaned table to a matrix.
+
+```{r counts-matrix}
+count_matrix <- counts_clean %>%
+  column_to_rownames("geneSymbol") %>%
+  as.matrix()
+
+storage.mode(count_matrix) <- "integer"
+
+count_matrix[1:5, 1:6]
+```
+
+# Split Total and Polysome Matrices
+
+`anota2seq` needs two matrices:
+
+- `dataT`: total RNA counts
+- `dataP`: polysome-associated RNA counts
+
+The two matrices must have the same genes and the same biological sample order.
+
+```{r split-matrices}
+total_metadata <- sample_metadata %>%
+  filter(assay == "total") %>%
+  arrange(condition, replicate)
+
+polysome_metadata <- sample_metadata %>%
+  filter(assay == "polysome") %>%
+  arrange(condition, replicate)
+
+stopifnot(identical(total_metadata$pair_id, polysome_metadata$pair_id))
+
+dataT <- count_matrix[, total_metadata$raw_column, drop = FALSE]
+dataP <- count_matrix[, polysome_metadata$raw_column, drop = FALSE]
+
+colnames(dataT) <- total_metadata$clean_sample
+colnames(dataP) <- polysome_metadata$clean_sample
+
+stopifnot(identical(rownames(dataT), rownames(dataP)))
+stopifnot(identical(colnames(dataT), colnames(dataP)))
+
+phenoVec <- total_metadata$condition
+names(phenoVec) <- total_metadata$clean_sample
+
+phenoVec
+```
+
+# First QC: Count-Level Sanity Checks
+
+Before model fitting, always ask whether the input behaves like sequencing data.
+
+```{r library-size-qc}
+library_qc <- bind_rows(
+  tibble(sample = colnames(dataT), library_size = colSums(dataT), assay = "total"),
+  tibble(sample = colnames(dataP), library_size = colSums(dataP), assay = "polysome")
+) %>%
+  left_join(
+    sample_metadata %>% distinct(clean_sample, condition, replicate),
+    by = c("sample" = "clean_sample")
+  )
+
+library_qc
+```
+
+```{r plot-library-size}
+library_qc %>%
+  ggplot(aes(x = sample, y = library_size, fill = assay)) +
+  geom_col(position = "dodge") +
+  scale_y_continuous(labels = scales::label_comma()) +
+  labs(
+    title = "Library Sizes by Assay",
+    x = NULL,
+    y = "Mapped counts"
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+Genes with no counts everywhere cannot support a model.
+
+```{r zero-count-qc}
+gene_qc <- tibble(
+  gene = rownames(dataT),
+  total_sum = rowSums(dataT),
+  polysome_sum = rowSums(dataP),
+  total_zero_samples = rowSums(dataT == 0),
+  polysome_zero_samples = rowSums(dataP == 0)
+) %>%
+  mutate(keep_any_signal = total_sum + polysome_sum > 0)
+
+gene_qc %>%
+  summarise(
+    genes = n(),
+    genes_with_any_signal = sum(keep_any_signal),
+    genes_all_zero = sum(!keep_any_signal),
+    median_total_sum = median(total_sum),
+    median_polysome_sum = median(polysome_sum)
+  )
+```
+
+```{r filter-zero-genes}
+dataT_filtered <- dataT[gene_qc$keep_any_signal, , drop = FALSE]
+dataP_filtered <- dataP[gene_qc$keep_any_signal, , drop = FALSE]
+
+stopifnot(identical(rownames(dataT_filtered), rownames(dataP_filtered)))
+```
+
+# PCA QC
+
+PCA is not the final analysis. It is a diagnostic: it tells us whether samples cluster by assay, condition, or an obvious batch-like pattern.
+
+```{r pca-helper}
+log_cpm <- function(mat) {
+  lib_size <- colSums(mat)
+  cpm <- sweep(mat, 2, lib_size / 1e6, "/")
+  log2(cpm + 1)
+}
+
+run_pca <- function(mat, metadata, title) {
+  log_mat <- log_cpm(mat)
+  gene_var <- matrixStats::rowVars(log_mat)
+  top_genes <- order(gene_var, decreasing = TRUE)[seq_len(min(1000, length(gene_var)))]
+  pca <- prcomp(t(log_mat[top_genes, , drop = FALSE]), scale. = TRUE)
+
+  percent <- round(100 * pca$sdev^2 / sum(pca$sdev^2), 1)
+
+  as_tibble(pca$x, rownames = "sample") %>%
+    left_join(metadata, by = c("sample" = "clean_sample")) %>%
+    ggplot(aes(x = PC1, y = PC2, color = condition, label = replicate)) +
+    geom_point(size = 3) +
+    geom_text(nudge_y = 0.5, show.legend = FALSE) +
+    labs(
+      title = title,
+      x = str_c("PC1 (", percent[1], "%)"),
+      y = str_c("PC2 (", percent[2], "%)")
+    ) +
+    theme_minimal()
+}
+```
+
+```{r pca-total}
+run_pca(
+  dataT_filtered,
+  total_metadata,
+  "PCA of Total RNA Samples"
+)
+```
+
+```{r pca-polysome}
+run_pca(
+  dataP_filtered,
+  polysome_metadata,
+  "PCA of Polysome-Associated RNA Samples"
+)
+```
+
+# Why Not Just Divide Polysome by Total?
+
+A tempting shortcut is:
+
+```{r naive-te-score}
+te_score <- log_cpm(dataP_filtered) - log_cpm(dataT_filtered)
+
+te_score[1:5, 1:5]
+```
+
+That number is useful for visualization, but it is risky as the main statistical test. Total RNA is part of the denominator, and then we ask whether the denominator explains the numerator. This can create false structure.
+
+The better question is regression-based:
+
+> For each gene, what part of polysome-associated RNA remains different between conditions after accounting for total RNA?
+
+That is the central idea of `anota2seq`.
+
+# Build the anota2seq Dataset
+
+For raw RNA-seq counts, `anota2seq` can normalize and transform during initialization. The PDF vignette uses:
+
+- `dataType = "RNAseq"`
+- `normalize = TRUE`
+- `transformation = "TMM-log2"`
+- `filterZeroGenes = TRUE`
+
+```{r build-anota2seq-dataset}
+ads <- anota2seqDataSetFromMatrix(
+  dataP = dataP_filtered,
+  dataT = dataT_filtered,
+  phenoVec = phenoVec,
+  dataType = "RNAseq",
+  filterZeroGenes = TRUE,
+  normalize = TRUE,
+  transformation = "TMM-log2",
+  varCutOff = NULL
+)
+```
+
+# Contrast Direction
+
+The phenotype levels are ordered as `shCtrl`, then `shERa`. The contrast below estimates `shERa - shCtrl`.
+
+```{r contrast-matrix}
+pheno_levels <- levels(phenoVec)
+pheno_levels
+
+contrast_matrix <- matrix(
+  c(-1, 1),
+  nrow = length(pheno_levels),
+  ncol = 1,
+  dimnames = list(pheno_levels, "shERa_vs_shCtrl")
+)
+
+contrast_matrix
+```
+
+# Run the Complete anota2seq Workflow
+
+The course uses the one-step wrapper because it runs the analysis and the required checks consistently.
+
+The thresholds below are deliberately explicit. They follow the conservative teaching defaults used in this course:
+
+- slope filters keep unrealistic regression slopes from dominating interpretation,
+- `delta* = log2(1.2)` means changes smaller than 20% are not treated as biologically meaningful,
+- `maxPAdj = 0.15` is exploratory and should be tightened for confirmatory work.
+
+```{r run-anota2seq}
+thresholds <- list(
+  minSlopeTranslation = -1,
+  maxSlopeTranslation = 2,
+  minSlopeBuffering = -2,
+  maxSlopeBuffering = 1,
+  deltaPT = log2(1.2),
+  deltaTP = log2(1.2),
+  deltaP = log2(1.2),
+  deltaT = log2(1.2),
+  maxPAdj = 0.15
+)
+
+ads <- anota2seqRun(
+  Anota2seqDataSet = ads,
+  contrasts = contrast_matrix,
+  thresholds = thresholds,
+  correctionMethod = "BH",
+  performQC = TRUE,
+  performROT = TRUE,
+  onlyGroup = FALSE
+)
+```
+
+# Extract Results
+
+There are four useful result views:
+
+- `translation`: polysome change after adjusting for total RNA.
+- `buffering`: total RNA changes that are dampened in the translated pool.
+- `total mRNA`: ordinary total RNA differential abundance.
+- `translated mRNA`: ordinary polysome-associated RNA differential abundance.
+
+```{r extract-results}
+translation_full <- anota2seqGetOutput(
+  ads,
+  analysis = "translation",
+  output = "full",
+  selContrast = 1,
+  getRVM = TRUE
+) %>%
+  as_tibble(rownames = "gene")
+
+buffering_full <- anota2seqGetOutput(
+  ads,
+  analysis = "buffering",
+  output = "full",
+  selContrast = 1,
+  getRVM = TRUE
+) %>%
+  as_tibble(rownames = "gene")
+
+translation_full %>%
+  arrange(apvRvmPAdj) %>%
+  select(gene, apvEff, apvRvmPAdj) %>%
+  dplyr::slice_head(n = 10)
+```
+
+After `anota2seqRun()`, the regulation-mode table links effect estimates to a biological label.
+
+```{r regulation-modes}
+reg_modes <- anota2seqGetOutput(
+  ads,
+  output = "regModes",
+  selContrast = 1,
+  analysis = "buffering",
+  getRVM = TRUE
+) %>%
+  as_tibble(rownames = "gene")
+
+reg_modes %>%
+  count(singleRegMode, sort = TRUE)
+```
+
+# Visualize Regulation Modes
+
+This plot compares fold change in translated mRNA against fold change in total mRNA. Genes are colored by the mode assigned by `anota2seq`.
+
+```{r plot-fc}
+anota2seqPlotFC(
+  ads,
+  selContrast = 1,
+  plotToFile = FALSE
+)
+```
+
+# Export Project-Ready Tables
+
+In a real project, never leave the result trapped inside an R object.
+
+```{r export-results}
+output_dir <- here("results", "module_09_translatome")
+dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
+
+write_csv(library_qc, file.path(output_dir, "library_size_qc.csv"))
+write_csv(gene_qc, file.path(output_dir, "gene_count_qc.csv"))
+write_csv(translation_full, file.path(output_dir, "translation_full_results.csv"))
+write_csv(buffering_full, file.path(output_dir, "buffering_full_results.csv"))
+write_csv(reg_modes, file.path(output_dir, "regulation_modes.csv"))
+
+saveRDS(ads, file.path(output_dir, "anota2seq_dataset.rds"))
+```
+
+# How to Interpret a Hit
+
+Use this interpretation order:
+
+1. Check the regulation mode.
+2. Check the adjusted p-value.
+3. Check the effect size.
+4. Check whether total RNA and polysome RNA tell the same story.
+5. Inspect the gene-level regression plot before making a biological claim.
+
+```{r plot-selected-genes, eval=FALSE}
+anota2seqPlotGenes(
+  ads,
+  selContrast = 1,
+  analysis = "translation",
+  plotToFile = FALSE
+)
+```
+
+# Common Mistakes
+
+- Treating total RNA and polysome RNA as independent experiments.
+- Sorting columns alphabetically after splitting matrices, which can break sample pairing.
+- Calling every polysome change "translation" without adjusting for total RNA.
+- Trusting top genes before checking `anota2seq` QC and residual outlier output.
+- Interpreting regulation mode as mechanism. It is evidence for a pattern, not proof of the molecular cause.
+
+# Key Takeaways
+
+- Translatome analysis is paired-assay analysis.
+- The sample order in `dataT`, `dataP`, and `phenoVec` must match exactly.
+- `translation` in `anota2seq` means translated RNA change after accounting for total RNA.
+- `translated mRNA` means the polysome-associated RNA level itself.
+- QC is part of the model, not a decorative plot at the end.
+
+# Memorable Rule
+
+Assay decides model.
+
+# Reproducibility
+
+```{r session-info}
+sessionInfo()
+```

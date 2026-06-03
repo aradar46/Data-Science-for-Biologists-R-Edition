@@ -1,0 +1,271 @@
+---
+title: "Solutions - Module 9: Translatome Analysis"
+output:
+  html_document:
+    toc: true
+    toc_depth: 2
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+library(tidyverse)
+library(here)
+library(anota2seq)
+set.seed(42)
+```
+
+# Setup
+
+```{r recreate-analysis-objects}
+raw_counts <- read_tsv(here("data", "GSE134606_rawCounts.tsv.gz"), show_col_types = FALSE)
+
+sample_metadata <- tribble(
+  ~raw_column,   ~condition, ~replicate, ~assay,
+  "P12959_1001", "shCtrl",   1,          "total",
+  "P12959_1002", "shCtrl",   1,          "polysome",
+  "P12959_1003", "shCtrl",   2,          "total",
+  "P12959_1004", "shCtrl",   2,          "polysome",
+  "P12959_1005", "shCtrl",   3,          "total",
+  "P12959_1006", "shCtrl",   3,          "polysome",
+  "P12959_1007", "shCtrl",   4,          "total",
+  "P12959_1008", "shCtrl",   4,          "polysome",
+  "P12959_1009", "shERa",    1,          "total",
+  "P12959_1010", "shERa",    1,          "polysome",
+  "P12959_1011", "shERa",    2,          "total",
+  "P12959_1012", "shERa",    2,          "polysome",
+  "P12959_1013", "shERa",    3,          "total",
+  "P12959_1014", "shERa",    3,          "polysome",
+  "P12959_1015", "shERa",    4,          "total",
+  "P12959_1016", "shERa",    4,          "polysome"
+) %>%
+  mutate(
+    condition = factor(condition, levels = c("shCtrl", "shERa")),
+    assay = factor(assay, levels = c("total", "polysome")),
+    pair_id = str_c(condition, "_rep", replicate),
+    clean_sample = pair_id
+  )
+
+count_columns <- setdiff(names(raw_counts), "geneSymbol")
+stopifnot(base::setequal(count_columns, sample_metadata$raw_column))
+
+counts_clean <- raw_counts %>%
+  filter(!is.na(geneSymbol), geneSymbol != "") %>%
+  group_by(geneSymbol) %>%
+  summarise(across(all_of(count_columns), ~sum(.x, na.rm = TRUE)), .groups = "drop")
+
+count_matrix <- counts_clean %>%
+  column_to_rownames("geneSymbol") %>%
+  as.matrix()
+
+storage.mode(count_matrix) <- "integer"
+
+total_metadata <- sample_metadata %>%
+  filter(assay == "total") %>%
+  arrange(condition, replicate)
+
+polysome_metadata <- sample_metadata %>%
+  filter(assay == "polysome") %>%
+  arrange(condition, replicate)
+
+dataT <- count_matrix[, total_metadata$raw_column, drop = FALSE]
+dataP <- count_matrix[, polysome_metadata$raw_column, drop = FALSE]
+
+colnames(dataT) <- total_metadata$clean_sample
+colnames(dataP) <- polysome_metadata$clean_sample
+
+gene_qc <- tibble(
+  gene = rownames(dataT),
+  keep_any_signal = rowSums(dataT) + rowSums(dataP) > 0
+)
+
+dataT_filtered <- dataT[gene_qc$keep_any_signal, , drop = FALSE]
+dataP_filtered <- dataP[gene_qc$keep_any_signal, , drop = FALSE]
+
+phenoVec <- total_metadata$condition
+names(phenoVec) <- total_metadata$clean_sample
+
+log_cpm <- function(mat) {
+  lib_size <- colSums(mat)
+  cpm <- sweep(mat, 2, lib_size / 1e6, "/")
+  log2(cpm + 1)
+}
+```
+
+# Solution 9.1 - Verify paired sample order
+
+```{r sol-9-1}
+stopifnot(identical(total_metadata$pair_id, polysome_metadata$pair_id))
+
+bad_polysome_metadata <- polysome_metadata %>%
+  arrange(desc(raw_column))
+
+identical(total_metadata$pair_id, bad_polysome_metadata$pair_id)
+```
+
+The failed check matters because `anota2seq` compares each total RNA column with the corresponding polysome RNA column. If `shCtrl_rep1` total RNA is paired with `shERa_rep4` polysome RNA, the model is mathematically valid but biologically false.
+
+# Solution 9.2 - Library size and zero-count diagnostics
+
+```{r sol-9-2}
+paired_library_sizes <- tibble(
+  sample = colnames(dataT),
+  condition = total_metadata$condition,
+  replicate = total_metadata$replicate,
+  total_library_size = colSums(dataT),
+  polysome_library_size = colSums(dataP)
+)
+
+paired_library_sizes
+
+paired_library_sizes %>%
+  ggplot(aes(x = total_library_size, y = polysome_library_size, color = condition)) +
+  geom_point(size = 3) +
+  geom_text(aes(label = replicate), nudge_y = 100000, show.legend = FALSE) +
+  scale_x_continuous(labels = scales::label_comma()) +
+  scale_y_continuous(labels = scales::label_comma()) +
+  labs(
+    title = "Paired Library Sizes",
+    x = "Total RNA counts",
+    y = "Polysome RNA counts"
+  ) +
+  theme_minimal()
+
+zero_summary <- tibble(
+  gene = rownames(dataT),
+  zero_all_total = rowSums(dataT) == 0,
+  zero_all_polysome = rowSums(dataP) == 0
+) %>%
+  summarise(
+    zero_all_total = sum(zero_all_total),
+    zero_all_polysome = sum(zero_all_polysome),
+    zero_all_both = sum(zero_all_total & zero_all_polysome)
+  )
+
+zero_summary
+```
+
+Zero-count genes can mean true absence, low expression below detection, annotation problems, or insufficient sequencing depth. They should be filtered or handled explicitly because they cannot support reliable regression.
+
+# Solution 9.3 - Naive translational efficiency score
+
+```{r sol-9-3}
+te_score <- log_cpm(dataP_filtered) - log_cpm(dataT_filtered)
+
+condition_lookup <- tibble(
+  sample = colnames(te_score),
+  condition = total_metadata$condition
+)
+
+delta_te <- as_tibble(te_score, rownames = "gene") %>%
+  pivot_longer(-gene, names_to = "sample", values_to = "te_score") %>%
+  left_join(condition_lookup, by = "sample") %>%
+  group_by(gene, condition) %>%
+  summarise(mean_te = mean(te_score), .groups = "drop") %>%
+  pivot_wider(names_from = condition, values_from = mean_te) %>%
+  mutate(delta_te = shERa - shCtrl) %>%
+  arrange(desc(abs(delta_te)))
+
+delta_te %>%
+  dplyr::slice_head(n = 10)
+```
+
+This ranking is useful for exploration because it highlights genes whose polysome-to-total relationship changes. It is not enough for a claim because ratio-style TE scores can induce spurious correlation and do not run the APV model checks used by `anota2seq`.
+
+# Solution 9.4 - Interpret regulation modes
+
+```{r sol-9-4, eval=FALSE}
+ads <- anota2seqDataSetFromMatrix(
+  dataP = dataP_filtered,
+  dataT = dataT_filtered,
+  phenoVec = phenoVec,
+  dataType = "RNAseq",
+  filterZeroGenes = TRUE,
+  normalize = TRUE,
+  transformation = "TMM-log2",
+  varCutOff = NULL
+)
+
+contrast_matrix <- matrix(
+  c(-1, 1),
+  nrow = length(levels(phenoVec)),
+  ncol = 1,
+  dimnames = list(levels(phenoVec), "shERa_vs_shCtrl")
+)
+
+thresholds <- list(
+  minSlopeTranslation = -1,
+  maxSlopeTranslation = 2,
+  minSlopeBuffering = -2,
+  maxSlopeBuffering = 1,
+  deltaPT = log2(1.2),
+  deltaTP = log2(1.2),
+  deltaP = log2(1.2),
+  deltaT = log2(1.2),
+  maxPAdj = 0.15
+)
+
+ads <- anota2seqRun(
+  Anota2seqDataSet = ads,
+  contrasts = contrast_matrix,
+  thresholds = thresholds,
+  correctionMethod = "BH",
+  performQC = TRUE,
+  performROT = TRUE,
+  onlyGroup = FALSE
+)
+
+reg_modes <- anota2seqGetOutput(
+  ads,
+  output = "regModes",
+  selContrast = 1,
+  analysis = "buffering",
+  getRVM = TRUE
+) %>%
+  as_tibble(rownames = "gene")
+
+reg_modes %>%
+  count(singleRegMode, sort = TRUE)
+
+reg_modes %>%
+  filter(!is.na(singleRegMode)) %>%
+  group_by(singleRegMode) %>%
+  dplyr::slice_min(apvRvmPAdj, n = 1, with_ties = FALSE) %>%
+  ungroup() %>%
+  select(gene, singleRegMode, apvEff, apvRvmPAdj)
+```
+
+Example cautious interpretation: "This gene is classified as translation-associated under `shERa` knockdown, meaning its polysome-associated abundance changes beyond what is explained by total RNA in this model."
+
+# Solution 9.5 - Tighten the FDR threshold
+
+```{r sol-9-5, eval=FALSE}
+thresholds_strict <- thresholds
+thresholds_strict$maxPAdj <- 0.05
+
+ads_strict <- anota2seqRun(
+  Anota2seqDataSet = ads,
+  contrasts = contrast_matrix,
+  thresholds = thresholds_strict,
+  correctionMethod = "BH",
+  performQC = TRUE,
+  performROT = TRUE,
+  onlyGroup = FALSE
+)
+
+reg_modes_strict <- anota2seqGetOutput(
+  ads_strict,
+  output = "regModes",
+  selContrast = 1,
+  analysis = "buffering",
+  getRVM = TRUE
+) %>%
+  as_tibble(rownames = "gene")
+
+bind_rows(
+  reg_modes %>% count(singleRegMode) %>% mutate(threshold = "FDR 0.15"),
+  reg_modes_strict %>% count(singleRegMode) %>% mutate(threshold = "FDR 0.05")
+) %>%
+  arrange(singleRegMode, threshold)
+```
+
+A stricter FDR threshold reduces false positives but may lose true, smaller effects. The right threshold depends on whether the analysis is exploratory or confirmatory.

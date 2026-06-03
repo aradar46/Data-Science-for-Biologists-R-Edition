@@ -1,5 +1,5 @@
 ---
-title: "Solutions — Module 9: Pathway Enrichment Analysis"
+title: "Solutions — Module 10: Pathway Enrichment Analysis"
 output:
   html_document:
     toc: true
@@ -17,7 +17,7 @@ library(ggplot2)
 
 ## Introduction
 
-This document provides the reference solutions for the exercises in Module 9 (Pathway Enrichment Analysis). We load the differential expression results from Module 8, map the identifiers to gene symbols, and run Over-Representation Analysis (ORA) and Gene Set Enrichment Analysis (GSEA).
+This document provides the reference solutions for the exercises in Module 10 (Pathway Enrichment Analysis). We load the differential expression results from Module 8, map the identifiers to gene symbols, and run Over-Representation Analysis (ORA) and Gene Set Enrichment Analysis (GSEA).
 
 ### Setup and Gene Mapping
 
@@ -40,7 +40,7 @@ annotated_results <- dge_results %>%
 
 ---
 
-## Exercise 9.1 — ORA on Down-Regulated Genes
+## Exercise 10.1 — ORA on Down-Regulated Genes
 
 Perform Over-Representation Analysis (ORA) on the list of significant *down-regulated* genes (`sig_down`) using the `GO_Biological_Process_2023` database.
 
@@ -99,7 +99,7 @@ enrich_down_tb %>%
 
 ---
 
-## Exercise 9.2 — GSEA with KEGG Pathway Database
+## Exercise 10.2 — GSEA with KEGG Pathway Database
 
 Load the KEGG pathways database signature from the local GMT file:
 `data/MSigDB_files/c2.cp.kegg.v6.2.symbols.gmt.txt`
@@ -176,7 +176,7 @@ plotEnrichment(kegg_pathways[[top_kegg_pathway]], ranked_vector) +
 
 ---
 
-## Exercise 9.3 — ORA vs. GSEA Comparison
+## Exercise 10.3 — ORA vs. GSEA Comparison
 
 Compare the enrichment results for the pathway **HALLMARK_INFLAMMATORY_RESPONSE** between up-regulated ORA and GSEA.
 
@@ -219,7 +219,7 @@ Both methods confirm highly significant activation of the inflammatory response.
 
 ---
 
-## Exercise 9.4 — Impact of Gene Ranking Metrics on GSEA
+## Exercise 10.4 — Impact of Gene Ranking Metrics on GSEA
 
 Modify the gene ranking metric for GSEA to use the log2 fold change directly (`rank_score = log2FoldChange`) without incorporating the p-value.
 

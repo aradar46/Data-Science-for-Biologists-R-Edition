@@ -1,15 +1,18 @@
 Type: Project
 Package: data-science-for-biologists-az
-Title: R for Biologists — Data Science, Bioinformatics, Machine Learning, Omics, and Single-Cell Analysis in R
+Title: R for Biologists — Data Science, Bioinformatics, Machine Learning, Omics, Translatomics, and Single-Cell Analysis in R
 Version: 1.0.0
 Description: A complete R curriculum for biologists and bioinformaticians covering data wrangling,
     visualization, statistical reasoning, tidymodels-based machine learning, bulk and single-cell
-    RNA-seq analysis (DESeq2, Seurat), pathway enrichment, survival analysis with Cox models,
-    and reproducible research with renv. Uses real clinical, microarray, and single-cell data.
+    RNA-seq analysis (DESeq2, Seurat), translatome analysis with anota2seq,
+    pathway enrichment, survival analysis with Cox models,
+    and reproducible research with renv. Uses real clinical, microarray, translatome,
+    and single-cell data.
 Encoding: UTF-8
 Depends:
     R (>= 4.1)
 Imports:
+    anota2seq,
     broom,
     DESeq2,
     enrichR,
@@ -18,6 +21,7 @@ Imports:
     here,
     knitr,
     limma,
+    matrixStats,
     patchwork,
     pheatmap,
     ranger,

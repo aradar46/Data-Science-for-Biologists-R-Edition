@@ -1,10 +1,10 @@
-# Exercises — Module 11: Survival Analysis and Omics Integration
+# Exercises — Module 12: Survival Analysis and Omics Integration
 
-Work through these exercises after completing the Module 11 notebook.
+Work through these exercises after completing the Module 12 notebook.
 
 ---
 
-## Exercise 11.1 — Censoring scenarios
+## Exercise 12.1 — Censoring scenarios
 
 For each patient below, explain whether they are an event or censored and at what time:
 
@@ -17,9 +17,9 @@ Which of cases 2–4 are informative censoring and which are administrative cens
 
 ---
 
-## Exercise 11.2 — Kaplan-Meier interpretation
+## Exercise 12.2 — Kaplan-Meier interpretation
 
-Using the KM curve from Module 11:
+Using the KM curve from Module 12:
 
 1. Read the estimated survival probability at 2 years for each treatment group.
 2. Read the estimated median survival time for each group (if reached).
@@ -27,7 +27,7 @@ Using the KM curve from Module 11:
 
 ---
 
-## Exercise 11.3 — Cox model extension
+## Exercise 12.3 — Cox model extension
 
 Load `data/clinical.csv`.
 
@@ -38,20 +38,20 @@ Load `data/clinical.csv`.
 
 ---
 
-## Exercise 11.4 — Validation split for omics Cox
+## Exercise 12.4 — Validation split for omics Cox
 
-Using the penalized Cox from Module 11:
+Using the penalized Cox from Module 12:
 
 1. Split the cohort 70/30 stratified by event status (set seed 42).
 2. Fit the elastic net Cox on the 70 % training set using `cv.glmnet`.
 3. Compute the C-index on both the training set and the held-out 30 % test set.
-4. Report the difference. What does this gap tell you about the in-sample C-index reported in Module 11?
+4. Report the difference. What does this gap tell you about the in-sample C-index reported in Module 12?
 
 ---
 
-## Exercise 11.5 — Risk group reporting
+## Exercise 12.5 — Risk group reporting
 
-A colleague argues that the high/low risk group split shown in Module 11 is publishable evidence for a clinical biomarker.
+A colleague argues that the high/low risk group split shown in Module 12 is publishable evidence for a clinical biomarker.
 
 Write a paragraph (5–8 sentences) explaining why it is not, covering:
 

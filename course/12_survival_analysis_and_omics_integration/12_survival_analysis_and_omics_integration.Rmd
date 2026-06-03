@@ -1,5 +1,5 @@
 ---
-title: "R for Biologists | Module 11 — Survival Analysis and Omics Integration"
+title: "R for Biologists | Module 12 — Survival Analysis and Omics Integration"
 output:
   html_document:
     toc: true

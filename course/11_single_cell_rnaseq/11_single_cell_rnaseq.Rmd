@@ -1,5 +1,5 @@
 ---
-title: "R for Biologists | Module 10 — Single-Cell RNA-seq: QC, Clustering, and Cell Type Annotation"
+title: "R for Biologists | Module 11 — Single-Cell RNA-seq: QC, Clustering, and Cell Type Annotation"
 output:
   html_document:
     toc: true

@@ -1,5 +1,5 @@
 ---
-title: "R for Biologists | Module 12 — Reproducible Research: renv, R Markdown, Docker, and Git"
+title: "R for Biologists | Module 13 — Reproducible Research: renv, R Markdown, Docker, and Git"
 output:
   html_document:
     toc: true
@@ -102,7 +102,7 @@ Absolute paths break when the project moves to a different machine, user account
 # here() always starts from the project root, wherever R is called from
 here("data", "clinical.csv")
 here("outputs", "survival_plot.png")
-here("course", "11_survival_analysis_and_omics_integration", "11_survival_analysis_and_omics_integration.Rmd")
+here("course", "12_survival_analysis_and_omics_integration", "12_survival_analysis_and_omics_integration.Rmd")
 ```
 
 ```{r here-rules}

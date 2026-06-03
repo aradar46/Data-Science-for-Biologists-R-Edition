@@ -1,5 +1,5 @@
 ---
-title: "R for Biologists | Module 9 — Pathway Enrichment: Gene Ontology and Gene Set Enrichment Analysis"
+title: "R for Biologists | Module 10 — Pathway Enrichment: Gene Ontology and Gene Set Enrichment Analysis"
 output:
   html_document:
     toc: true

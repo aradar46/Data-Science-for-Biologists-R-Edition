@@ -1,6 +1,6 @@
 # R for Biologists - Data Science, Bioinformatics, and Machine Learning in R
 
-**A free, hands-on R course covering data wrangling, statistics, machine learning with tidymodels, omics analysis, survival analysis, and reproducible bioinformatics — built on real clinical and expression datasets.**
+**A free, hands-on R course covering data wrangling, statistics, machine learning with tidymodels, omics analysis, translatome analysis, survival analysis, and reproducible bioinformatics — built on real clinical and expression datasets.**
 
 No placeholder code. Beginner-friendly.
 
@@ -72,6 +72,7 @@ By the end of this course you will be able to:
 - choose statistical tests with justified assumptions, not guesswork
 - build leakage-safe predictive models with `tidymodels` on real patient data
 - run differential expression analysis with `limma` on microarray-style expression matrices
+- analyze paired total RNA and polysome-associated RNA to detect translational regulation
 - fit Cox proportional hazards models and penalized survival models for high-dimensional omics data
 - compare clinical-only, omics-only, and combined models with an honest performance estimate
 - produce fully reproducible R Markdown reports using `renv`, `here`, and documented data provenance
@@ -91,11 +92,12 @@ By the end of this course you will be able to:
 | 6 | Biomedical machine learning | `course/06_biomedical_ml/` |
 | 7 | Omics foundations | `course/07_omics_foundations/` |
 | 8 | Bulk RNA-seq differential expression | `course/08_bulk_rnaseq_differential_expression/` |
-| 9 | Pathway enrichment analysis | `course/09_pathway_enrichment/` |
-| 10 | Single-cell RNA-seq analysis | `course/10_single_cell_rnaseq/` |
-| 11 | Survival analysis and omics integration | `course/11_survival_analysis_and_omics_integration/` |
-| 12 | Reproducible engineering for biologists | `course/12_reproducible_engineering/` |
-| 13 | Capstone project | `course/13_capstone/` |
+| 9 | Translatome analysis with anota2seq | `course/09_translatome_analysis/` |
+| 10 | Pathway enrichment analysis | `course/10_pathway_enrichment/` |
+| 11 | Single-cell RNA-seq analysis | `course/11_single_cell_rnaseq/` |
+| 12 | Survival analysis and omics integration | `course/12_survival_analysis_and_omics_integration/` |
+| 13 | Reproducible engineering for biologists | `course/13_reproducible_engineering/` |
+| 14 | Capstone project | `course/14_capstone/` |
 
 Each module follows a consistent structure: biological question → learning objectives → data validation → concept explanation → worked example → exercises → common mistakes → key takeaways → `sessionInfo()`.
 
@@ -103,11 +105,11 @@ Each module follows a consistent structure: biological question → learning obj
 
 ## Fast Path
 
-Do not force yourself through all 14 modules linearly. Pick the route that matches your immediate goal:
+Do not force yourself through all 15 modules linearly. Pick the route that matches your immediate goal:
 
-- **Core data science route:** 0, 1, 2, 3, 4, 7, 12, 13
-- **Bioinformatics route:** 0, 2, 4, 7, 8, 9, 12, 13
-- **ML/survival route:** 0, 2, 4, 5, 6, 11, 13
+- **Core data science route:** 0, 1, 2, 3, 4, 7, 13, 14
+- **Bioinformatics route:** 0, 2, 4, 7, 8, 9, 10, 13, 14
+- **ML/survival route:** 0, 2, 4, 5, 6, 12, 14
 
 Each route is designed to get you from foundations to a project-ready workflow quickly.
 
@@ -125,12 +127,13 @@ Core modules use matched, bundled datasets:
 | `data/rnaseq_counts_filtered.csv` | RNA-seq count matrix (Ensembl IDs) for colitis model (6 samples) |
 | `data/rnaseq_metadata.csv` | Sample metadata (colitis model) |
 | `data/rnaseq_mouse_genes.txt` | Gene symbol lookup table for mouse Ensembl IDs |
+| `data/GSE134606_rawCounts.tsv.gz` | Paired total RNA and polysome-associated RNA counts for translatome analysis |
 | `data/MSigDB_files/` | Local MSigDB pathway signatures (Hallmark, GO BP, KEGG) |
 | `data/seurat_pbmc_subset.rds` | Cleaned 1,500-cell PBMC single-cell RNA-seq subset (COVID-19 vs. Control) |
 
-The `clinical.csv` + `omics.csv` pair runs as the integrative project arc across Modules 7, 11, and 13: joining, QC, differential analysis, survival modeling, penalized regression, and reproducible reporting.
+The `clinical.csv` + `omics.csv` pair runs as the integrative project arc across Modules 7, 12, and 14: joining, QC, differential analysis, survival modeling, penalized regression, and reproducible reporting.
 
-Most analyses run from bundled files. Module 9 includes optional `enrichR` examples that query online enrichment databases; the local `fgsea` examples use bundled MSigDB GMT files.
+Most analyses run from bundled files. Module 10 includes optional `enrichR` examples that query online enrichment databases; the local `fgsea` examples use bundled MSigDB GMT files.
 
 ---
 
@@ -138,8 +141,8 @@ Most analyses run from bundled files. Module 9 includes optional `enrichR` examp
 
 ```
 r-for-biologists/
-├── course/                   14 R Markdown modules (00–13), each self-contained
-├── exercises/                11 exercise sheets (Modules 1–11 where practice is assigned)
+├── course/                   15 R Markdown modules (00–14), each self-contained
+├── exercises/                12 exercise sheets (Modules 1–12 where practice is assigned)
 ├── solutions/                Executable R Markdown solutions with explanations
 ├── data/                     Bundled clinical, expression, RNA-seq, and single-cell datasets
 ├── install_dependencies.R    Run once to install all required packages
@@ -157,10 +160,12 @@ r-for-biologists/
 | `tidymodels` | Machine learning workflows, resampling, tuning |
 | `limma` | Differential expression for continuous expression matrices |
 | `DESeq2` | Differential expression for count-based RNA-seq matrices |
+| `anota2seq` | Paired total RNA and polysome/ribosome-profiling translatome analysis |
 | `Seurat` | Single-cell RNA-seq QC, dimensionality reduction, and clustering |
 | `survival` + `survminer` | Kaplan-Meier curves, Cox models, proportional hazards checks |
 | `glmnet` | Penalized regression (elastic net, lasso) for high-dimensional omics |
 | `enrichR` + `fgsea` | Pathway enrichment analysis (over-representation and GSEA) |
+| `matrixStats` | Fast row-wise summaries for omics QC and PCA |
 | `pheatmap` | Clustered expression heatmaps |
 | `patchwork` | Multi-panel single-cell visualizations |
 | `viridis` | Colorblind-friendly heatmap palettes in exercises and solutions |
@@ -180,7 +185,7 @@ This course enforces decisions that introductory courses typically skip:
 - **Censoring is handled correctly in survival modules:** binary simplifications are explicitly labeled as teaching examples
 - **Every notebook validates its data:** patient IDs are aligned explicitly before any join or model
 - **Interpretation is separated from mechanism:** association ≠ causation, in-sample ≠ validated
-- **Every notebook is self-contained:** each file runs independently from top to bottom with no hidden state
+- **Notebook state is explicit:** inputs, assumptions, and optional online steps are labeled in the notebook itself
 
 ## Memorable Rules
 
@@ -195,9 +200,9 @@ This course enforces decisions that introductory courses typically skip:
 
 ## Exercises and Solutions
 
-`exercises/` contains 11 exercise sheets (one per active module), each with 4-5 questions covering code tasks and written biological interpretation.
+`exercises/` contains 12 exercise sheets (one per active module), each with 4-5 questions covering code tasks and written biological interpretation.
 
-`solutions/` contains executable R Markdown solutions for Modules 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, and 11, with annotated explanations, not just code.
+`solutions/` contains executable R Markdown solutions for Modules 1 through 12, with annotated explanations, not just code.
 
 ---
 
@@ -209,10 +214,10 @@ A printable quick-reference checklist is available at [`course/omics_analysis_ch
 
 ## Capstone Project
 
-`course/13_capstone/` contains:
+`course/14_capstone/` contains:
 
-- **`13_capstone_brief.Rmd`** — project scope, required analysis sections, and grading rubric
-- **`13_capstone_starter.Rmd`** — parameterized starter notebook with required section scaffolding and code stubs
+- **`14_capstone_brief.Rmd`** — project scope, required analysis sections, and grading rubric
+- **`14_capstone_starter.Rmd`** — parameterized starter notebook with required section scaffolding and code stubs
 
 ---
 
@@ -237,5 +242,3 @@ Apache License 2.0. See [LICENSE](LICENSE).
 
 The original Python course was developed by the Data Science Academy at AstraZeneca [data-science-python-course](https://github.com/AstraZeneca/data-science-python-course). 
 This R edition is an independent redesign that replaces all Python content with R-native, biology-centered, reproducible workflows. Also, other content has been added, and will be added in the future, to make the course more complete and useful.  
-
-

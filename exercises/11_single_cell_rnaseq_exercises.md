@@ -1,10 +1,10 @@
-# Exercises — Module 10: Single-Cell RNA-seq Analysis
+# Exercises — Module 11: Single-Cell RNA-seq Analysis
 
-Work through these exercises after completing the Module 10 notebook.
+Work through these exercises after completing the Module 11 notebook.
 
 ---
 
-## Exercise 10.1 — Ribosomal Gene Profiling
+## Exercise 11.1 — Ribosomal Gene Profiling
 
 In many single-cell datasets, ribosomal genes (which start with `RPS` or `RPL` in humans) account for a high percentage of the reads.
 
@@ -14,7 +14,7 @@ In many single-cell datasets, ribosomal genes (which start with `RPS` or `RPL` i
 
 ---
 
-## Exercise 10.2 — Granular Clustering Resolution
+## Exercise 11.2 — Granular Clustering Resolution
 
 Adjust the clustering resolution parameter to split the cell populations into more granular subgroups.
 
@@ -25,7 +25,7 @@ Adjust the clustering resolution parameter to split the cell populations into mo
 
 ---
 
-## Exercise 10.3 — NK Cells vs. T Cells Differential Expression
+## Exercise 11.3 — NK Cells vs. T Cells Differential Expression
 
 NK cells and T cells share many lymphoid lineage markers, but they also have distinct functional roles.
 
@@ -36,7 +36,7 @@ NK cells and T cells share many lymphoid lineage markers, but they also have dis
 
 ---
 
-## Exercise 10.4 — B Cell Antiviral Response in COVID-19
+## Exercise 11.4 — B Cell Antiviral Response in COVID-19
 
 Let's study the cell-type-specific response in B cells during COVID-19.
 

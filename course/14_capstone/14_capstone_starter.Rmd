@@ -1,5 +1,5 @@
 ---
-title: "R for Biologists | Module 13 — Capstone Starter Notebook"
+title: "R for Biologists | Module 14 — Capstone Starter Notebook"
 output:
   html_document:
     toc: true
@@ -315,4 +315,4 @@ In-sample is not validated.
 sessionInfo()
 ```
 
-**Reproducibility note:** To reproduce this analysis, clone the repository, run `renv::restore()`, then run `rmarkdown::render("course/13_capstone/13_capstone_starter.Rmd")` from the project root.
+**Reproducibility note:** To reproduce this analysis, clone the repository, run `renv::restore()`, then run `rmarkdown::render("course/14_capstone/14_capstone_starter.Rmd")` from the project root.
