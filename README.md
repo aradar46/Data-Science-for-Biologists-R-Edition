@@ -21,7 +21,7 @@ No placeholder code. Every notebook runs. Beginner-friendly.
 
 **Have git?**
 ```bash
-git clone https://github.com/<username>/r-for-biologists.git
+git clone https://github.com/aradar46/Data-Science-for-Biologists-R-Edition
 ```
 
 ### Step 3 — Install the course packages (once)
@@ -188,11 +188,5 @@ Apache License 2.0. See [LICENSE](LICENSE).
 
 ## Original Course and Credits
 
-The original Python course was developed by the Data Science Academy at AstraZeneca.
-This R edition is an independent redesign that replaces all Python content with R-native, biology-centered, reproducible workflows.
-
-Previous Python course iterations:
-[2020](https://github.com/semacu/data-science-python) ·
-[Jan 2021](https://github.com/semacu/202101-data-science-python) ·
-[May 2021](https://github.com/semacu/202105-data-science-python) ·
-[Oct 2021](https://github.com/semacu/202110-data-science-python)
+The original Python course was developed by the Data Science Academy at AstraZeneca [data-science-python-course](https://github.com/AstraZeneca/data-science-python-course). 
+This R edition is an independent redesign that replaces all Python content with R-native, biology-centered, reproducible workflows. Also, other content has been added, and will be added in the future, to make the course more complete and useful.  
