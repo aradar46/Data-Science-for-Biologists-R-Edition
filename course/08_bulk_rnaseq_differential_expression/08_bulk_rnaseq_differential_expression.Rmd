@@ -1,0 +1,312 @@
+---
+title: "R for Biologists | Module 8 — RNA-seq Analysis: Count-Based Differential Expression and Pathway Enrichment"
+output:
+  html_document:
+    toc: true
+    toc_depth: 2
+---
+
+> **Acknowledgment:** This module is adapted from the RNA-seq workshop by the National Bioinformatics Infrastructure Sweden (NBIS) (https://github.com/NBISweden/workshop-RNAseq).
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  message = FALSE,
+  warning = FALSE,
+  fig.width = 8,
+  fig.height = 5
+)
+
+set.seed(42)
+```
+
+# Biological Question
+
+Which genes are differentially expressed in mouse colons following DSS-induced colitis (day 7) compared to untreated controls (day 0), and what biological pathways and molecular mechanisms are altered?
+
+# Learning Objectives
+
+By the end of this module, learners should be able to:
+
+- explain why count-based RNA-seq data requires different statistical distributions (Negative Binomial) than continuous microarray data (Normal),
+- validate sample metadata and count matrix alignment prior to modeling,
+- compute size factors using the median-of-ratios method and explain library size normalization,
+- explain gene-wise dispersion, why shrinkage is necessary for low-replicate experiments, and interpret dispersion plot trends,
+- run a differential expression analysis using Wald tests in `DESeq2`,
+- correct for multiple testing using false discovery rate (FDR) and check the p-value distribution,
+- map Ensembl identifiers to gene symbols programmatically using a local annotation reference,
+- perform over-representation analysis (ORA) with `enrichR` and Gene Set Enrichment Analysis (GSEA) with `fgsea` using local MSigDB signatures,
+- write a results paragraph summarizing the effect sizes, statistical thresholds, mapped symbols, and pathways.
+
+# Prerequisites
+
+- Module 2: data wrangling and validation.
+- Module 4: statistical reasoning and multiple testing.
+- Module 7: continuous omics analysis (microarray/limma).
+- Packages: `tidyverse`, `here`, `DESeq2`, `enrichR`, `fgsea`, `pheatmap`.
+- Datasets: `data/rnaseq_counts_filtered.csv`, `data/rnaseq_metadata.csv`, `data/rnaseq_mouse_genes.txt`, `data/MSigDB_files/`.
+
+# Setup
+
+```{r packages}
+library(tidyverse)
+library(here)
+library(DESeq2)
+library(enrichR)
+library(fgsea)
+library(pheatmap)
+```
+
+# Data Input and Validation
+
+Count-based RNA-seq data contains raw integer reads mapping to each gene. The rows are gene identifiers (e.g. Ensembl IDs) and the columns are biological samples. The metadata table maps samples to their experimental groups.
+
+Let's load the raw filtered counts and the metadata.
+
+```{r load-data}
+counts_path <- here("data", "rnaseq_counts_filtered.csv")
+metadata_path <- here("data", "rnaseq_metadata.csv")
+genes_map_path <- here("data", "rnaseq_mouse_genes.txt")
+
+counts_raw <- read_csv(counts_path, show_col_types = FALSE)
+metadata <- read_csv(metadata_path, show_col_types = FALSE)
+genes_map <- read_tsv(genes_map_path, show_col_types = FALSE)
+```
+
+First, let's convert the counts table into a numeric matrix. The row names must be the gene identifiers.
+
+```{r prepare-matrix}
+# Extract gene IDs and convert remainder to matrix
+gene_ids <- counts_raw[[1]]
+count_matrix <- counts_raw %>%
+  select(-1) %>%
+  as.matrix()
+rownames(count_matrix) <- gene_ids
+
+# Glimpse the data
+count_matrix[1:5, 1:5]
+```
+
+Next, validate that the sample columns in the count matrix align perfectly with the rows in the metadata table. This prevents catastrophic sample misalignment.
+
+```{r validate-alignment}
+# Check unique IDs
+stopifnot(!anyDuplicated(metadata$SampleName))
+stopifnot(!anyDuplicated(rownames(count_matrix)))
+
+# Validate that sample sets are equal
+stopifnot(base::setequal(colnames(count_matrix), metadata$SampleName))
+
+# Align the column order of the count matrix with the metadata rows
+count_matrix <- count_matrix[, metadata$SampleName]
+
+# Confirm identical order
+stopifnot(identical(colnames(count_matrix), metadata$SampleName))
+
+# Summarize cohort characteristics
+tibble(
+  total_genes = nrow(count_matrix),
+  total_samples = ncol(count_matrix),
+  groups = paste(unique(metadata$Group), collapse = ", "),
+  total_reads = sum(count_matrix)
+)
+```
+
+# Size Factors and Library Size Normalization
+
+The first step in RNA-seq analysis is normalizing for sequencing depth (library size) and compositional biases. `DESeq2` uses the **median-of-ratios** method to calculate size factors for each sample.
+
+Let's convert our counts and metadata into a `DESeqDataSet` object. We model the counts using the design formula `~ Group` (day07 vs day00).
+
+```{r create-deseq-dataset}
+# Make sure the reference level for Group is set to day00 (untreated control)
+metadata <- metadata %>%
+  mutate(Group = factor(Group, levels = c("day00", "day07")))
+
+dds <- DESeqDataSetFromMatrix(
+  countData = count_matrix,
+  colData = metadata,
+  design = ~ Group
+)
+```
+
+Let's calculate the size factors and retrieve them.
+
+```{r estimate-size-factors}
+dds <- estimateSizeFactors(dds)
+sizeFactors(dds)
+```
+
+Size factors adjust for differences in library size (sequencing depth). We can divide raw counts by these factors to obtain normalized counts.
+
+```{r view-normalized}
+normalized_counts <- counts(dds, normalized = TRUE)
+normalized_counts[1:5, 1:5]
+```
+
+# Dispersion Estimation and Shrinkage
+
+Because RNA-seq reads are count data, their variance increases with the mean expression level. We model this overdispersed count data using a **Negative Binomial** distribution.
+
+Dispersion measures the variability in counts that cannot be explained by a Poisson distribution. Since clinical or animal experiments often have very few replicates (here $N=3$ per group), estimates of gene-wise dispersion are highly unstable. To overcome this, `DESeq2` shares information across genes: it assumes that genes with similar expression levels have similar dispersion.
+
+Let's estimate the dispersions and plot the shrinkage.
+
+```{r estimate-dispersions}
+dds <- estimateDispersions(dds)
+plotDispEsts(dds)
+```
+
+- **Black dots** represent the individual gene-wise dispersion estimates computed using maximum likelihood.
+- **Red line** represents the fitted curve showing the global trend of dispersion across expression levels.
+- **Blue dots** represent the final shrunk dispersion estimates. Shrinking estimates toward the red line significantly increases statistical power and reduces false positives.
+- **Blue circles** represent genes with extremely high dispersion that are excluded from shrinkage because they do not follow the global trend.
+
+# Statistical Wald Testing
+
+After estimating size factors and dispersions, we fit a negative binomial generalized linear model and perform a Wald test for each gene. The null hypothesis is that the log2 fold change between `day07` (colitis) and `day00` (control) is 0.
+
+```{r run-wald-test}
+dds <- nbinomWaldTest(dds)
+resultsNames(dds)
+```
+
+Let's extract the results for the comparison of interest (`day07` vs `day00`) using an FDR significance threshold ($\alpha$) of 0.05.
+
+```{r extract-results}
+res_raw <- results(dds, name = "Group_day07_vs_day00", alpha = 0.05)
+summary(res_raw)
+```
+
+## P-value Histogram Check
+
+Checking the distribution of raw, unadjusted p-values is a critical diagnostic step.
+
+```{r pval-histogram}
+hist(res_raw$pvalue, breaks = 50, col = "grey80", main = "Raw P-value Distribution", xlab = "P-value")
+```
+
+A well-behaved p-value histogram should show a flat, uniform distribution for non-significant genes (p-values between 0.1 and 1.0) and a sharp spike near 0 for the truly differentially expressed genes.
+
+# Fold Change Shrinkage (lfcShrink)
+
+Low-count genes often have highly volatile fold-change estimates simply due to random sampling. `DESeq2` provides a method (`lfcShrink()`) to shrink fold changes of low-expression or highly variable genes toward zero without affecting p-values. This is essential for ranking genes and visual expression analysis.
+
+```{r run-lfc-shrink}
+res <- lfcShrink(dds, coef = "Group_day07_vs_day00", type = "normal")
+summary(res)
+```
+
+Let's convert our results to a tidy tibble.
+
+```{r tidy-results}
+results_tb <- as.data.frame(res) %>%
+  rownames_to_column("ensembl_gene_id") %>%
+  as_tibble() %>%
+  mutate(padj = if_else(is.na(padj), 1, padj)) # Handle NA adjusted p-values safely
+
+results_tb %>%
+  arrange(padj) %>%
+  dplyr::slice_head(n = 10)
+```
+
+# Visualization of DGE Results
+
+## MA Plot
+
+The MA plot displays the mean of normalized counts on the x-axis vs log2 fold change on the y-axis.
+
+```{r plot-ma}
+plotMA(res, ylim = c(-6, 6), main = "MA Plot with Shrunk Log2 Fold Changes")
+```
+
+Significant genes (FDR < 0.05) are highlighted in blue. Notice that the shrunken log2 fold changes do not explode for low-abundance genes (left side of the plot).
+
+## Volcano Plot
+
+A volcano plot contrasts effect size (log2 fold change) with statistical significance ($-\log_{10}$ adjusted p-value).
+
+```{r plot-volcano}
+results_tb %>%
+  mutate(
+    status = case_when(
+      padj < 0.05 & log2FoldChange > 1 ~ "Up-regulated (FDR < 0.05)",
+      padj < 0.05 & log2FoldChange < -1 ~ "Down-regulated (FDR < 0.05)",
+      TRUE ~ "Not significant"
+    )
+  ) %>%
+  ggplot(aes(x = log2FoldChange, y = -log10(padj), color = status)) +
+  geom_point(alpha = 0.5, size = 1.5) +
+  geom_vline(xintercept = c(-1, 1), linetype = "dashed", color = "grey50") +
+  geom_hline(yintercept = -log10(0.05), linetype = "dashed", color = "grey50") +
+  scale_color_manual(values = c("Up-regulated (FDR < 0.05)" = "#d73027", "Down-regulated (FDR < 0.05)" = "#4575b4", "Not significant" = "grey70")) +
+  labs(
+    title = "Volcano Plot: Colitis vs Control",
+    x = "Log2 Fold Change",
+    y = "-Log10 Adjusted P-value",
+    color = NULL
+  ) +
+  theme_minimal()
+```
+
+## Count Plots of Top Genes
+
+It is good practice to inspect the raw and normalized read counts for the top significant genes.
+
+```{r plot-individual-counts}
+top_gene <- results_tb %>%
+  arrange(padj) %>%
+  dplyr::slice(1) %>%
+  pull(ensembl_gene_id)
+
+plotCounts(dds, gene = top_gene, intgroup = "Group", normalized = TRUE, main = paste("Normalized counts for:", top_gene))
+```
+
+# Exporting Results for Downstream Analysis
+
+Finally, we export the results table as a CSV file so that we can perform pathway annotation and enrichment analysis (such as Gene Ontology and GSEA) in the next module.
+
+```{r export-results}
+write_csv(results_tb, here("data", "rnaseq_dge_results.csv"))
+```
+
+# Interpretation Checkpoint
+
+Answer these before drawing biological conclusions:
+
+1. What is the unit of analysis and group replicates count?
+2. Did you use raw integers (not log/normalized) as input to DESeq2?
+3. Does the p-value distribution histogram show a well-behaved uniform + spike shape?
+4. Did you apply multiple testing correction (adjusted p-values) to identify significant genes?
+5. What are the clinical or experimental limitations of the animal model (DSS colitis) when generalizing to human inflammatory bowel disease?
+
+# Common Failure Modes
+
+- **Using normalized/scaled counts as input to DESeqDataSetFromMatrix**: DESeq2's internal statistical models require raw integer counts to correctly model sampling noise.
+- **Filtering genes based on p-value instead of adjusted p-value (padj)**: Testing thousands of genes leads to high false discovery rates; FDR correction is mandatory.
+- **Confounding batch with condition**: If all day 00 samples were sequenced in Batch A and all day 07 samples in Batch B, the differential expression will capture sequencing batch differences rather than colitis biology.
+- **Ignoring the p-value distribution**: A skewed or hump-shaped p-value histogram suggests severe batch effects, sample swap, or model misspecification.
+
+# Exercises
+
+1. Change the FDR significance threshold ($\alpha$) in the `results()` function from 0.05 to 0.10. How many genes are now classified as significant?
+2. Instead of `lfcShrink()` with `type="normal"`, run the shrinkage using `type="ashr"` or `type="apeglm"` (requires additional packages). Compare the shrunken values of the top 10 genes.
+3. Compute size factors manually using the step-by-step *median-of-ratios* method described in the optional section and compare them to the `sizeFactors(dds)` output.
+4. Create a heatmap (`pheatmap`) of the top 50 significant genes using log-transformed normalized counts (`log2(normalized_counts + 1)`), scaled by row.
+
+# Key Takeaways
+
+- RNA-seq read counts are discrete integer values with overdispersion; they must be modeled using count-based methods (Negative Binomial) such as DESeq2.
+- Size factors normalize for differences in library size (sequencing depth) and sample composition.
+- Dispersion shrinkage shares information across genes to stabilize variance estimates in low-replicate experiments.
+- Shrunk fold changes prevent low-expression genes from showing misleadingly high fold changes.
+
+# Memorable Rule
+
+Assay decides model.
+
+# Reproducibility
+
+```{r session-info}
+sessionInfo()
+```

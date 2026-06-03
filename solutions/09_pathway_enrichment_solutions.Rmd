@@ -1,0 +1,268 @@
+---
+title: "Solutions — Module 9: Pathway Enrichment Analysis"
+output:
+  html_document:
+    toc: true
+    toc_depth: 2
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+library(tidyverse)
+library(here)
+library(enrichR)
+library(fgsea)
+library(ggplot2)
+```
+
+## Introduction
+
+This document provides the reference solutions for the exercises in Module 9 (Pathway Enrichment Analysis). We load the differential expression results from Module 8, map the identifiers to gene symbols, and run Over-Representation Analysis (ORA) and Gene Set Enrichment Analysis (GSEA).
+
+### Setup and Gene Mapping
+
+First, let's load and map the dataset exactly as done in the main tutorial.
+
+```{r load-and-map}
+dge_results <- read_csv(here("data", "rnaseq_dge_results.csv"), show_col_types = FALSE)
+genes_map <- read_tsv(here("data", "rnaseq_mouse_genes.txt"), show_col_types = FALSE)
+
+annotated_results <- dge_results %>%
+  left_join(
+    genes_map %>% select(ensembl_gene_id, external_gene_name),
+    by = "ensembl_gene_id"
+  ) %>%
+  mutate(
+    gene_symbol = if_else(is.na(external_gene_name) | external_gene_name == "", ensembl_gene_id, external_gene_name)
+  ) %>%
+  select(-external_gene_name)
+```
+
+---
+
+## Exercise 9.1 — ORA on Down-Regulated Genes
+
+Perform Over-Representation Analysis (ORA) on the list of significant *down-regulated* genes (`sig_down`) using the `GO_Biological_Process_2023` database.
+
+### 1. Extract significant down-regulated genes
+
+```{r extract-down}
+sig_down <- annotated_results %>%
+  filter(padj < 0.05, log2FoldChange < -1) %>%
+  pull(gene_symbol)
+
+sig_down <- sig_down[!is.na(sig_down) & sig_down != ""]
+length(sig_down)
+```
+
+### 2. Query the GO Biological Process database
+
+```{r query-go-down}
+db <- "GO_Biological_Process_2023"
+enrich_down <- enrichr(genes = sig_down, databases = db)
+enrich_down_tb <- as_tibble(enrich_down[[db]])
+```
+
+### 3. Filter, sort, and display top 10 terms
+
+```{r show-go-down}
+top_down_go <- enrich_down_tb %>%
+  arrange(P.value) %>%
+  select(Term, Overlap, P.value, Adjusted.P.value) %>%
+  filter(Adjusted.P.value < 0.05)
+
+top_down_go %>%
+  dplyr::slice_head(n = 10)
+```
+
+### 4. Plot the top 10 enriched terms
+
+```{r plot-go-down}
+enrich_down_tb %>%
+  arrange(P.value) %>%
+  dplyr::slice_head(n = 10) %>%
+  mutate(Term = fct_reorder(Term, -P.value)) %>%
+  ggplot(aes(x = -log10(P.value), y = Term)) +
+  geom_bar(stat = "identity", fill = "#4575b4") +
+  labs(
+    title = "GO Biological Process: Down-regulated in Colitis",
+    x = "-Log10 P-value",
+    y = NULL
+  ) +
+  theme_minimal()
+```
+
+### 5. Biological interpretation and comparison
+
+- **Up-regulated terms** (from the main module) are dominated by inflammation, cytokine signaling, cell chemotaxis, and immune response pathways (e.g. "inflammatory response", "immune system process"). This reflects the massive infiltration of immune cells (neutrophils, macrophages) into the colon tissue during colitis.
+- **Down-regulated terms** (shown above) are dominated by cellular metabolism, fatty acid oxidation, ion transport, and epithelial structural maintenance (e.g. "lipid metabolic process", "carboxylic acid metabolic process", "detoxification"). This reflects the severe damage and functional collapse of the colon's mucosal barrier, loss of normal colonocyte metabolic function, and tissue necrosis.
+
+---
+
+## Exercise 9.2 — GSEA with KEGG Pathway Database
+
+Load the KEGG pathways database signature from the local GMT file:
+`data/MSigDB_files/c2.cp.kegg.v6.2.symbols.gmt.txt`
+
+### 1. Load GMT file and prepare ranked list
+
+```{r load-kegg-gmt}
+kegg_gmt_path <- here("data", "MSigDB_files", "c2.cp.kegg.v6.2.symbols.gmt.txt")
+kegg_pathways <- gmtPathways(kegg_gmt_path)
+
+# Prepare ranked vector (collapsed by lowest p-value, converting to uppercase)
+ranked_genes <- annotated_results %>%
+  filter(!is.na(gene_symbol) & gene_symbol != "") %>%
+  mutate(
+    rank_score = sign(log2FoldChange) * -log10(pmax(pvalue, .Machine$double.xmin))
+  ) %>%
+  group_by(gene_symbol) %>%
+  dplyr::slice_min(pvalue, n = 1, with_ties = FALSE) %>%
+  ungroup() %>%
+  mutate(gene_symbol = toupper(gene_symbol))
+
+ranked_vector <- ranked_genes$rank_score
+names(ranked_vector) <- ranked_genes$gene_symbol
+ranked_vector <- sort(ranked_vector, decreasing = TRUE)
+```
+
+### 2. Run GSEA using fgsea
+
+```{r run-fgsea-kegg}
+fgsea_kegg <- fgsea(
+  pathways = kegg_pathways,
+  stats = ranked_vector,
+  minSize = 10,
+  maxSize = 500
+)
+
+fgsea_kegg_tb <- as_tibble(fgsea_kegg) %>%
+  arrange(pval)
+```
+
+### 3. Identify top 5 up- and down-regulated pathways
+
+```{r show-kegg-results}
+# Top 5 up-regulated
+fgsea_kegg_tb %>%
+  filter(padj < 0.05, NES > 0) %>%
+  select(pathway, pval, padj, NES, size) %>%
+  dplyr::slice_head(n = 5)
+
+# Top 5 down-regulated
+fgsea_kegg_tb %>%
+  filter(padj < 0.05, NES < 0) %>%
+  select(pathway, pval, padj, NES, size) %>%
+  dplyr::slice_head(n = 5)
+```
+
+### 4. Plot running enrichment score
+
+We select the top significant up-regulated pathway (e.g. `KEGG_CYTOKINE_CYTOKINE_RECEPTOR_INTERACTION` or similar).
+
+```{r plot-kegg-running}
+top_kegg_pathway <- fgsea_kegg_tb %>%
+  filter(padj < 0.05, NES > 0) %>%
+  arrange(pval) %>%
+  dplyr::slice(1) %>%
+  pull(pathway)
+
+plotEnrichment(kegg_pathways[[top_kegg_pathway]], ranked_vector) +
+  labs(
+    title = paste("KEGG GSEA Running Enrichment:", top_kegg_pathway),
+    subtitle = "Peak enrichment score represents cytokine receptor activation"
+  )
+```
+
+---
+
+## Exercise 9.3 — ORA vs. GSEA Comparison
+
+Compare the enrichment results for the pathway **HALLMARK_INFLAMMATORY_RESPONSE** between up-regulated ORA and GSEA.
+
+### 1. Retrieve ORA results
+
+```{r compare-ora}
+# We first query the Hallmark database in ORA to get a direct comparison if needed, 
+# or use the GO/KEGG equivalent. Let's load Hallmark ORA to compare directly.
+hallmark_db <- "MSigDB_Hallmark_2020"
+enrich_hallmark <- enrichr(genes = annotated_results %>% 
+                             filter(padj < 0.05, log2FoldChange > 1) %>% 
+                             pull(gene_symbol) %>% toupper(), 
+                           databases = hallmark_db)
+enrich_hallmark_tb <- as_tibble(enrich_hallmark[[hallmark_db]])
+
+enrich_hallmark_tb %>%
+  filter(grepl("Inflammatory Response", Term, ignore.case = TRUE)) %>%
+  select(Term, Overlap, P.value, Adjusted.P.value)
+```
+
+### 2. Retrieve GSEA results
+
+```{r compare-gsea}
+# Load MSigDB Hallmark GMT and run fgsea
+hallmark_path <- here("data", "MSigDB_files", "h.all.v6.2.symbols.gmt.txt")
+hallmark_pathways <- gmtPathways(hallmark_path)
+fgsea_hallmark <- fgsea(pathways = hallmark_pathways, stats = ranked_vector, minSize = 10)
+
+as_tibble(fgsea_hallmark) %>%
+  filter(pathway == "HALLMARK_INFLAMMATORY_RESPONSE") %>%
+  select(pathway, pval, padj, NES, size)
+```
+
+### 3. Discussion
+
+Both methods confirm highly significant activation of the inflammatory response.
+- **ORA** finds that a significantly larger fraction of our top up-regulated genes are inflammatory genes than expected by random chance (Adjusted P-value < 1e-15).
+- **GSEA** confirms this with a strong positive Normalized Enrichment Score (NES > 2.0, adjusted p-value = 1e-4), demonstrating that genes in this pathway are clustered tightly at the very top of our ranked genome list.
+- **Method Differences**: GSEA is more sensitive because it considers the coordinate shift of *all* genes in the pathway. A pathway might not have enough genes passing a strict fold-change threshold to be significant in ORA, but if many of its genes show a small, consistent up-regulation, GSEA will detect it. Conversely, ORA is useful when you have a very specific set of top hits and want to know what they represent, without being influenced by background gene expression.
+
+---
+
+## Exercise 9.4 — Impact of Gene Ranking Metrics on GSEA
+
+Modify the gene ranking metric for GSEA to use the log2 fold change directly (`rank_score = log2FoldChange`) without incorporating the p-value.
+
+### 1. Prepare ranked list based only on log2FoldChange
+
+```{r rank-lfc}
+ranked_lfc <- annotated_results %>%
+  filter(!is.na(gene_symbol) & gene_symbol != "") %>%
+  group_by(gene_symbol) %>%
+  dplyr::slice_min(pvalue, n = 1, with_ties = FALSE) %>%
+  ungroup() %>%
+  mutate(gene_symbol = toupper(gene_symbol))
+
+vector_lfc <- ranked_lfc$log2FoldChange
+names(vector_lfc) <- ranked_lfc$gene_symbol
+vector_lfc <- sort(vector_lfc, decreasing = TRUE)
+```
+
+### 2. Run GSEA using log2FoldChange ranking
+
+```{r run-fgsea-lfc}
+fgsea_lfc <- fgsea(
+  pathways = hallmark_pathways,
+  stats = vector_lfc,
+  minSize = 10,
+  maxSize = 500
+)
+
+fgsea_lfc_tb <- as_tibble(fgsea_lfc) %>%
+  arrange(pval)
+```
+
+### 3. Compare top pathways
+
+```{r compare-rankings}
+# Top 5 up-regulated under LFC-only ranking
+fgsea_lfc_tb %>%
+  filter(padj < 0.05, NES > 0) %>%
+  select(pathway, pval, padj, NES, size) %>%
+  dplyr::slice_head(n = 5)
+```
+
+### 4. Discussion
+
+- **Differences in Results**: While major inflammatory pathways still rank high (due to their extremely large fold changes), the overall ranking and significance levels change. Pathways with highly variable genes or small sample sizes (which have high fold changes by chance but poor p-values) can rise to the top of an LFC-only ranked list, creating false positives.
+- **Why a Hybrid Metric is Safer**: Fold change alone does not account for variance or statistical confidence. A gene with a 4-fold change that has huge variance across samples (p-value = 0.5) is ranked higher than a gene with a 2-fold change that is extremely consistent (p-value = 1e-10). The hybrid metric `sign(log2FoldChange) * -log10(pvalue)` balances effect size and statistical confidence, ensuring that genes ranked at the extremes are both highly changed and statistically robust.

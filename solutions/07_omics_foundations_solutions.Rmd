@@ -1,0 +1,149 @@
+---
+title: "Solutions — Module 7: Omics Foundations"
+output:
+  html_document:
+    toc: true
+    toc_depth: 2
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+library(tidyverse)
+library(here)
+library(limma)
+```
+
+```{r load-data}
+clinical <- read_csv(here("data", "clinical.csv"), show_col_types = FALSE)
+omics    <- read_csv(here("data", "omics.csv"),    show_col_types = FALSE)
+
+omics_aligned <- omics %>% dplyr::slice(match(clinical$patientID, patientID))
+stopifnot(identical(clinical$patientID, omics_aligned$patientID))
+
+expression_matrix <- omics_aligned %>% select(-patientID) %>% as.matrix()
+rownames(expression_matrix) <- omics_aligned$patientID
+```
+
+# Solution 7.1 — Assay type identification
+
+1. **Matrix of integer read counts (RNA-seq)**: Use **Negative Binomial GLMs** (e.g. `DESeq2` or `edgeR`). Count data are discrete and show overdispersion (variance > mean), which violates normal linear regression assumptions.
+2. **Matrix of log-scaled fluorescence intensities (microarray)**: Use **standard linear modeling** (e.g. `limma`). Log-fluorescence intensities are continuous, symmetric, and approximate a Normal distribution.
+3. **Sparse cell × gene matrix (scRNA-seq)**: Use **zero-inflated or negative binomial models** tailored to single-cell data (e.g. `Seurat` with negative binomial, or `SCTransform`). The high proportion of zeros (dropout) and sparsity requires specialized modeling.
+4. **Protein LFQ intensities with 30 % missing values (mass spectrometry)**: Use **linear models with imputation** or missing-not-at-random (MNAR) models (e.g. `MSstats`, or `limma` after imputing missing values via QRILC or KNN). Standard models cannot handle high rates of missing values directly.
+
+---
+
+# Solution 7.2 — Sample alignment validation
+
+Here is the validation function and its test execution:
+
+```{r sol-7-2}
+validate_alignment <- function(clinical, omics) {
+  # 1. Checks
+  has_patient_id <- "patientID" %in% colnames(clinical) && "patientID" %in% colnames(omics)
+  if (!has_patient_id) {
+    stop("patientID column missing from one or both tables.")
+  }
+  
+  dup_clinical <- anyDuplicated(clinical$patientID) > 0
+  dup_omics <- anyDuplicated(omics$patientID) > 0
+  
+  # Find matches
+  matched <- intersect(clinical$patientID, omics$patientID)
+  unmatched <- setdiff(clinical$patientID, omics$patientID)
+  
+  list(
+    n_clinical = nrow(clinical),
+    n_omics = nrow(omics),
+    n_matched = length(matched),
+    n_unmatched = length(unmatched),
+    duplicated_clinical = dup_clinical,
+    duplicated_omics = dup_omics
+  )
+}
+
+# Test the function
+validate_alignment(clinical, omics)
+```
+
+---
+
+# Solution 7.3 — QC plots
+
+Let's run PCA and plot PC3 vs PC4.
+
+```{r sol-7-3}
+pca_res <- prcomp(expression_matrix, center = TRUE, scale. = TRUE)
+pca_df <- as.data.frame(pca_res$x) %>%
+  rownames_to_column("patientID") %>%
+  left_join(clinical, by = "patientID")
+
+ggplot(pca_df, aes(x = PC3, y = PC4, color = factor(treatment))) +
+  geom_point(alpha = 0.6) +
+  labs(title = "PCA: PC3 vs PC4", x = "PC3", y = "PC4", color = "Treatment") +
+  theme_minimal()
+```
+
+No major treatment-specific separation appears in PC3 or PC4. Let's calculate Mahalanobis distance in the top 5 PC space.
+
+```{r sol-7-3-mahalanobis}
+pc_space <- pca_res$x[, 1:5]
+mu <- colMeans(pc_space)
+sigma <- cov(pc_space)
+
+distances <- mahalanobis(pc_space, mu, sigma)
+pca_df$mahalanobis <- distances
+
+mean_dist <- mean(distances)
+sd_dist <- sd(distances)
+cutoff <- mean_dist + 3 * sd_dist
+
+outliers <- pca_df %>% filter(mahalanobis > cutoff)
+nrow(outliers)
+
+# Highlight outliers
+ggplot(pca_df, aes(x = PC1, y = PC2, color = mahalanobis > cutoff)) +
+  geom_point(alpha = 0.7) +
+  scale_color_manual(values = c("FALSE" = "grey70", "TRUE" = "red")) +
+  labs(title = "Outliers Identified by Mahalanobis Distance", x = "PC1", y = "PC2", color = "Outlier (>3 SD)") +
+  theme_minimal()
+```
+
+**Discussion**: We would **not** automatically exclude these patients. An outlier in gene expression space could be biologically real and important (e.g. a rare tumor subtype with unique molecular characteristics, or a patient with an extreme response to treatment). We should first check technical QC metrics (RNA degradation, scan date, total read/signal intensity). If no technical artifacts are found, the data points should be kept, and sensitivity analyses should be performed with and without these samples.
+
+---
+
+# Solution 7.4 — Differential analysis extension
+
+Let's fit a model with both `treatment_group` and `status_label` as additive terms.
+
+```{r sol-7-4}
+# Prepare design matrix
+design <- model.matrix(~ treatment + status, data = clinical)
+
+# Fit linear model
+fit <- lmFit(t(expression_matrix), design)
+fit <- eBayes(fit)
+
+# Get results for status (recurrence status)
+results_status <- topTable(fit, coef = "status", number = Inf)
+sig_status <- results_status %>% filter(adj.P.Val < 0.05)
+nrow(sig_status)
+```
+
+There are `r nrow(sig_status)` FDR-significant probes for the `status` coefficient.
+
+**Risk**: If `treatment_group` and `status_label` are highly associated (e.g. treated patients are much less likely to have events), the model faces multicollinearity. In extreme cases of perfect association, the design matrix becomes singular and cannot be inverted. More generally, it increases the standard errors of both coefficients, making it difficult to estimate the independent effect of either variable, and leading to a loss of statistical power to detect true markers.
+
+---
+
+# Solution 7.5 — Annotation caveat
+
+1. **HG-U133A probe mapping**: Affymetrix probe IDs like `200000_s_at` correspond to specific sequence transcripts. For example:
+   - Probe `205225_at` maps to the **ESR1** gene (Estrogen Receptor 1), which is a key clinical biomarker in breast cancer.
+2. **Provenance note example**:
+   - *Platform*: Affymetrix Human Genome U133 Plus 2.0 Array (HG-U133_Plus_2)
+   - *Database used*: Ensembl BioMart (release 109, mouse/human genes)
+   - *Version*: GRCh38.p13
+   - *Access Date*: 2026-06-03
+3. **Invalid direct ORA explanation**: Running pathway enrichment directly on probe IDs without mapping them to genes is invalid. The pathway databases (like GO or KEGG) are indexed by Entrez gene IDs or Hugo Gene Symbols, not chip-specific probe IDs. Additionally, many-to-one mapping exists (multiple probes mapping to the same gene), which artificially inflates background sets and distorts hypergeometric/Fisher's exact test calculations.

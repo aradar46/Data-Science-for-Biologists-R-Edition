@@ -83,7 +83,7 @@ omics <- read_csv(
 
 stopifnot(!anyDuplicated(clinical$patientID))
 stopifnot(!anyDuplicated(omics$patientID))
-stopifnot(setequal(clinical$patientID, omics$patientID))
+stopifnot(base::setequal(clinical$patientID, omics$patientID))
 ```
 
 # Plot Choice Depends on Variable Type
@@ -348,6 +348,10 @@ For each figure, answer:
 - High-dimensional plots like heatmaps and PCA are exploratory unless paired with validation.
 - Survival data needs survival-aware visualization.
 - Captions should prevent overinterpretation.
+
+# Memorable Rule
+
+Assay decides model.
 
 # Reproducibility
 

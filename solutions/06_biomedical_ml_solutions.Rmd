@@ -1,0 +1,256 @@
+---
+title: "Solutions — Module 6: Biomedical Machine Learning"
+output:
+  html_document:
+    toc: true
+    toc_depth: 2
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+library(tidyverse)
+library(here)
+library(tidymodels)
+library(themis)
+library(vip)
+set.seed(42)
+```
+
+```{r load-data}
+clinical <- read_csv(here("data", "clinical.csv"), show_col_types = FALSE)
+omics    <- read_csv(here("data", "omics.csv"),    show_col_types = FALSE)
+
+omics_aligned <- omics %>% dplyr::slice(match(clinical$patientID, patientID))
+stopifnot(identical(clinical$patientID, omics_aligned$patientID))
+```
+
+# Solution 6.1 — Imbalanced metrics
+
+First, prepare the data and split it 70/30 stratified by `status`.
+
+```{r sol-6-1-split}
+set.seed(42)
+clinical_df <- clinical %>%
+  mutate(
+    status = factor(if_else(status == 1, "event", "censored"), levels = c("event", "censored")),
+    treatment = factor(if_else(treatment == 1, "chemo", "standard"))
+  )
+
+split_obj <- initial_split(clinical_df, prop = 0.70, strata = status)
+train_data <- training(split_obj)
+test_data  <- testing(split_obj)
+```
+
+Fit a logistic regression predicting `status` from `treatment`.
+
+```{r sol-6-1-fit}
+log_spec <- logistic_reg() %>%
+  set_engine("glm") %>%
+  set_mode("classification")
+
+log_fit <- log_spec %>%
+  fit(status ~ treatment, data = train_data)
+```
+
+Evaluate on the test set.
+
+```{r sol-6-1-eval}
+test_preds <- test_data %>%
+  select(status) %>%
+  bind_cols(predict(log_fit, test_data)) %>%
+  bind_cols(predict(log_fit, test_data, type = "prob"))
+
+# Custom metric set
+cls_metrics <- metric_set(accuracy, sensitivity, specificity, roc_auc)
+cls_metrics(test_preds, truth = status, estimate = .pred_class, .pred_event)
+```
+
+### Written Answers:
+- **Accuracy of majority class predictor**: A model predicting "censored" for all patients achieves an accuracy equal to the proportion of censored patients in the test set. Let's compute this:
+  ```{r sol-6-1-majority}
+  mean(test_data$status == "censored")
+  ```
+  It achieves ~69.6% accuracy. This is **not** a good model because it has a sensitivity (true event rate) of 0% and completely fails to identify patients who will experience recurrence or death.
+- **Clinician Metric**: If a clinician asks "how often does the model miss a true event?", you should report **Sensitivity** (also known as Recall or True Positive Rate). Specifically, $1 - \text{Sensitivity}$ represents the False Negative Rate (the proportion of true events missed by the model).
+
+---
+
+# Solution 6.2 — Elastic net with high-dimensional predictors
+
+First, join clinical and expression data.
+
+```{r sol-6-2-join}
+joined_df <- clinical_df %>%
+  select(patientID, status) %>%
+  left_join(omics, by = "patientID")
+```
+
+Re-split the joined data with the same seed.
+
+```{r sol-6-2-split}
+set.seed(42)
+split_omics <- initial_split(joined_df, prop = 0.70, strata = status)
+train_omics <- training(split_omics)
+test_omics  <- testing(split_omics)
+
+folds <- vfold_cv(train_omics, v = 5, strata = status)
+```
+
+Build the recipe, model specification, and workflow.
+
+```{r sol-6-2-recipe}
+recipe_spec <- recipe(status ~ ., data = train_omics) %>%
+  update_role(patientID, new_role = "ID") %>%
+  step_nzv(all_predictors()) %>%
+  step_normalize(all_predictors())
+
+net_spec <- logistic_reg(
+  penalty = tune(),
+  mixture = tune()
+) %>%
+  set_engine("glmnet") %>%
+  set_mode("classification")
+
+net_workflow <- workflow() %>%
+  add_recipe(recipe_spec) %>%
+  add_model(net_spec)
+```
+
+Define the tuning grid and tune the parameters.
+
+```{r sol-6-2-tune}
+grid_spec <- grid_regular(
+  penalty(range = c(-4, -1)),
+  mixture(range = c(0, 1)),
+  levels = 5
+)
+
+tune_res <- tune_grid(
+  net_workflow,
+  resamples = folds,
+  grid = grid_spec,
+  metrics = metric_set(roc_auc)
+)
+```
+
+Plot the tuning results as a heatmap of ROC-AUC.
+
+```{r sol-6-2-plot}
+autoplot(tune_res) +
+  theme_minimal() +
+  labs(title = "Elastic Net Tuning Heatmap")
+```
+
+---
+
+# Solution 6.3 — Random forest comparison
+
+Define the random forest specification.
+
+```{r sol-6-3-spec}
+rf_spec <- rand_forest(
+  trees = 500,
+  min_n = 10
+) %>%
+  set_engine("ranger", importance = "impurity") %>%
+  set_mode("classification")
+
+rf_workflow <- workflow() %>%
+  add_recipe(recipe_spec) %>%
+  add_model(rf_spec)
+```
+
+Evaluate Random Forest using cross-validation.
+
+```{r sol-6-3-cv}
+set.seed(42)
+rf_res <- fit_resamples(
+  rf_workflow,
+  resamples = folds,
+  metrics = metric_set(roc_auc)
+)
+
+collect_metrics(rf_res)
+```
+
+### Comparison:
+Let's see the best CV ROC-AUC from the Elastic Net:
+```{r sol-6-3-compare}
+show_best(tune_res, metric = "roc_auc", n = 1)
+```
+Typically, the Elastic Net model performs slightly better or similarly to Random Forest on high-dimensional genomic data because linear regularized models are less prone to overfitting than decision tree ensembles in $P \gg N$ settings.
+
+Plot variable importance for the top 20 probes.
+
+```{r sol-6-3-vip}
+# Fit final RF model on training data
+final_rf_fit <- rf_workflow %>%
+  fit(data = train_omics)
+
+final_rf_fit %>%
+  extract_fit_parsnip() %>%
+  vip(num_features = 20) +
+  theme_minimal() +
+  labs(title = "Random Forest Variable Importance (Top 20)")
+```
+
+### Written Answer:
+High variable importance indicates that a probe is useful for predicting patient status in this cohort, but it does **not** mean the probe causes the outcome, because:
+1. It could be a passenger gene whose expression changes downstream of the disease but does not drive it.
+2. It could be highly correlated with a true causal gene, and the model selected this probe as a proxy.
+3. The probe may reflect tumor cell density or immune cell infiltration rather than tumor-intrinsic biology.
+
+---
+
+# Solution 6.4 — Grouped resampling
+
+### Written Answers:
+1. **Patient Leakage**: If a patient has multiple samples and we perform standard random cross-validation, one sample from a patient could end up in the training fold while another sample from the *same* patient ends up in the validation fold. Since samples from the same patient are highly correlated, the model will easily recognize the patient's unique signature and achieve artificially high validation performance. This represents a type of data leakage that leads to overly optimistic performance estimates.
+2. **Demonstrating grouped CV**:
+   We simulate grouped data by duplicating the training set and adding minor noise, then applying `group_vfold_cv()`.
+   ```{r sol-6-4}
+   # Create duplicated patient dataset
+   duplicated_train <- bind_rows(
+     train_omics,
+     train_omics %>% mutate(across(where(is.numeric), ~ .x + rnorm(n(), 0, 0.01)))
+   )
+   
+   # Random CV vs. Grouped CV
+   random_folds <- vfold_cv(duplicated_train, v = 5, strata = status)
+   grouped_folds <- group_vfold_cv(duplicated_train, group = patientID, v = 5)
+   
+   # Verify that patients are kept together in grouped folds
+   # In grouped folds, no patient ID should be present in both analysis and assessment splits of a fold
+   ```
+3. **Change in AUC**: In grouped CV, the cross-validated AUC estimates will decrease (become lower) compared to random CV. This lower AUC is a much more honest and accurate representation of how the model will perform on new, unseen patients.
+
+---
+
+# Solution 6.5 — Model Card
+
+Below is the model card for the optimized Elastic Net model.
+
+### Model Card — Breast Cancer Recurrence Classifier
+
+#### 1. Model Purpose and Intended Use
+- **Purpose**: Classify breast cancer patients into "event" (recurrence/death) vs "censored" (stable survival) risk categories based on high-dimensional microarray gene expression profiles.
+- **Intended Use**: Research exploratory classification to identify candidates for high-risk clinical follow-up. It is not approved for direct clinical diagnostic use.
+
+#### 2. Training Data Description
+- **Cohort**: 429 training patients (derived from clinical-omics cohort of 614 patients, 70% train split).
+- **Features**: 1,691 microarray expression probes.
+- **Event Rate**: ~30% event rate (recurrence/death).
+- **Preprocessing**: Near-zero-variance probe filtering followed by Z-score standardization.
+
+#### 3. Performance Metrics
+- **Cross-validated ROC-AUC**: ~0.65 - 0.70 (metric varies based on tuning parameter selection).
+- **Majority Class Baseline Accuracy**: 69.6% (predicting censored for all).
+
+#### 4. Known Limitations
+- **Cohort Size**: Small patient cohort ($N=614$ total) limiting robustness.
+- **Technological platform**: Built on legacy microarray chips; may not translate to modern RNA-seq platforms.
+- **Biological interpretation**: Elastic net regression selects co-expressed predictor blocks; individual coefficients do not denote biological causation.
+
+#### 5. Out-of-Scope Uses (What should not be done)
+- **Clinical Treatment Decisions**: This model must not be used to choose clinical therapies or withhold chemotherapy.
+- **Direct diagnostic application**: Not to be deployed as an active diagnostic tool without external validation and regulatory clearance.

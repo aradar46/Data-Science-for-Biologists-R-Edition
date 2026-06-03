@@ -137,7 +137,7 @@ id_checks <- tibble(
   passed = c(
     !anyDuplicated(clinical$patientID),
     !anyDuplicated(omics$patientID),
-    setequal(clinical$patientID, omics$patientID),
+    base::setequal(clinical$patientID, omics$patientID),
     identical(clinical$patientID, omics$patientID)
   )
 )
@@ -322,6 +322,10 @@ Before using `starter_analysis`, answer:
 - Missingness and categorical levels should be audited before analysis.
 - Long and wide data formats serve different purposes.
 - A clean analysis table should be accompanied by validation checks.
+
+# Memorable Rule
+
+IDs before joins.
 
 # Reproducibility
 

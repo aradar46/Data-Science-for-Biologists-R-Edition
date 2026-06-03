@@ -1,0 +1,334 @@
+---
+title: "R for Biologists | Module 10 — Single-Cell RNA-seq: QC, Clustering, and Cell Type Annotation"
+output:
+  html_document:
+    toc: true
+    toc_depth: 2
+---
+
+> **Acknowledgment:** This module is adapted from the single-cell RNA-seq workshop by the National Bioinformatics Infrastructure Sweden (NBIS) (https://github.com/NBISweden/workshop-scRNAseq).
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  message = FALSE,
+  warning = FALSE,
+  fig.width = 8,
+  fig.height = 5
+)
+
+set.seed(42)
+```
+
+# Biological Question
+
+How do the cell type compositions and transcriptional profiles of human Peripheral Blood Mononuclear Cells (PBMCs) differ between healthy individuals and COVID-19 patients at single-cell resolution?
+
+# Learning Objectives
+
+By the end of this module, learners should be able to:
+
+- explain the structural differences between bulk RNA-seq and single-cell RNA-seq data,
+- construct a `Seurat` object from raw count matrices and access its core slots,
+- calculate and interpret single-cell QC metrics (cell count, library size, gene count, mitochondrial percentage),
+- perform library size normalization and identify highly variable genes (HVGs),
+- explain the purpose of scaling data and running Principal Component Analysis (PCA),
+- run and interpret non-linear dimensionality reduction (UMAP) for visualization,
+- perform graph-based Louvain clustering and determine optimal resolution,
+- identify cluster markers and annotate clusters with cell type names using canonical marker genes,
+- run cell-type-specific differential expression between conditions.
+
+# Prerequisites
+
+- Module 2: data wrangling and validation.
+- Module 3: visualization for biology (ggplot2).
+- Module 8: bulk RNA-seq differential expression (DESeq2).
+- Packages: `Seurat`, `tidyverse`, `here`, `patchwork`, `scales`.
+- Datasets: `data/seurat_pbmc_subset.rds`.
+
+# Setup
+
+We load `Seurat` and the standard data wrangling packages.
+
+```{r packages}
+library(Seurat)
+library(tidyverse)
+library(here)
+library(patchwork)
+library(scales)
+```
+
+# 1. Loading the Raw Data and Creating the Seurat Object
+
+In single-cell genomics, a dataset is represented by a cell-by-gene expression matrix (where entries are UMI counts). We start with a subset of 1,500 cells from human PBMCs (balanced between 750 COVID-19 patients and 750 healthy controls).
+
+Let's load our raw count matrix and metadata from the subsetted RDS file.
+
+```{r load-raw}
+pbmc_data_path <- here("data", "seurat_pbmc_subset.rds")
+if (!file.exists(pbmc_data_path)) {
+  stop("PBMC dataset not found. Please verify that the data files exist in the data folder.")
+}
+
+# Read the pre-processed RDS object to extract its raw counts and metadata
+pbmc_in <- readRDS(pbmc_data_path)
+counts <- pbmc_in[["RNA"]]$counts
+metadata <- pbmc_in@meta.data %>% 
+  select(orig.ident, type)
+
+# Create a fresh Seurat object from raw counts
+pbmc <- CreateSeuratObject(counts = counts, meta.data = metadata, project = "PBMC_Covid")
+pbmc
+```
+
+The Seurat object acts as a container that stores the count matrix, normalized data, dimensionality reductions (like PCA and UMAP), and metadata.
+
+Let's inspect the first 5 cells and 5 genes of the count matrix:
+
+```{r inspect-counts}
+pbmc[["RNA"]]$counts[1:5, 1:5]
+```
+
+Notice the counts matrix is a sparse matrix (`dgCMatrix`) because most cells do not express most genes. Using a sparse matrix saves massive amounts of memory.
+
+---
+
+# 2. Quality Control (QC) Filtering
+
+Single-cell datasets contain low-quality cells, empty droplets, and doublets (multiple cells captured in one droplet). We calculate standard QC metrics:
+1. `nCount_RNA`: Total number of UMIs (transcripts) detected per cell.
+2. `nFeature_RNA`: Number of unique genes detected per cell.
+3. `percent_mito`: Percentage of reads mapping to mitochondrial genes (high values suggest damaged or dying cells whose cytoplasm leaked out).
+
+```{r calculate-qc}
+# Mitochondrial genes start with 'MT-' in humans
+pbmc <- PercentageFeatureSet(pbmc, pattern = "^MT-", col.name = "percent_mito")
+head(pbmc@meta.data)
+```
+
+Let's visualize these QC metrics as a violin plot.
+
+```{r plot-qc-violins, fig.width=10, fig.height=6}
+VlnPlot(pbmc, features = c("nFeature_RNA", "nCount_RNA", "percent_mito"), ncol = 3, pt.size = 0.1)
+```
+
+We filter out cells that have:
+- Too few genes detected (e.g., < 200, which are likely empty droplets).
+- Extremely high mitochondrial percentage (e.g., > 10%, indicating dying cells).
+
+```{r filter-cells}
+pbmc <- subset(pbmc, subset = nFeature_RNA > 200 & percent_mito < 10)
+pbmc
+```
+
+---
+
+# 3. Normalization and Feature Selection
+
+To compare cells, we must normalize for differences in sequencing depth (library size) across cells. The default method scales the counts per cell to 10,000 and log-transforms the results.
+
+```{r normalize}
+pbmc <- NormalizeData(pbmc, normalization.method = "LogNormalize", scale.factor = 10000, verbose = FALSE)
+```
+
+Next, we identify the **Highly Variable Features** (genes that vary significantly across cells). These genes contain the most signal for clustering and cell type identity.
+
+```{r hvgs}
+pbmc <- FindVariableFeatures(pbmc, selection.method = "vst", nfeatures = 2000, verbose = FALSE)
+
+# Identify the top 10 most variable genes
+top10 <- head(VariableFeatures(pbmc), 10)
+top10
+
+# Plot variable features
+plot1 <- VariableFeaturePlot(pbmc)
+plot2 <- LabelPoints(plot = plot1, points = top10, repel = TRUE)
+plot2
+```
+
+---
+
+# 4. Scaling and Dimensionality Reduction (PCA)
+
+Before running PCA, we scale the data so that each gene has a mean of 0 and a variance of 1. This prevents highly expressed genes from dominating the PCA.
+
+```{r scale}
+pbmc <- ScaleData(pbmc, verbose = FALSE)
+```
+
+Now, we perform linear dimensionality reduction (PCA) on the highly variable genes.
+
+```{r run-pca}
+pbmc <- RunPCA(pbmc, features = VariableFeatures(object = pbmc), verbose = FALSE)
+
+# Visualize PCA loadings for the first two components
+DimPlot(pbmc, reduction = "pca", group.by = "type")
+```
+
+To decide how many Principal Components (PCs) to retain for downstream clustering and UMAP, we use an **Elbow Plot**, which ranks PCs by the percentage of variance they explain.
+
+```{r elbow-plot}
+ElbowPlot(pbmc, ndims = 20)
+```
+
+We look for the "elbow" where the curve flattens out (around 10-15 PCs). We will use the first 12 PCs for downstream steps.
+
+---
+
+# 5. Graph-Based Clustering
+
+Single-cell clustering is graph-based: we build a Shared Nearest Neighbor (SNN) graph of cells based on PC distances, and then partition the graph into clusters using the Louvain algorithm.
+
+The `resolution` parameter controls the granularity of clusters: higher values produce more clusters.
+
+```{r clustering}
+pbmc <- FindNeighbors(pbmc, dims = 1:12, verbose = FALSE)
+pbmc <- FindClusters(pbmc, resolution = 0.5, verbose = FALSE)
+
+# Show cluster sizes
+table(pbmc$seurat_clusters)
+```
+
+---
+
+# 6. Non-linear Dimensionality Reduction (UMAP)
+
+For visualization, we project the high-dimensional PCA space into 2D using Uniform Manifold Approximation and Projection (UMAP).
+
+```{r run-umap}
+pbmc <- RunUMAP(pbmc, dims = 1:12, verbose = FALSE)
+
+# Plot UMAP colored by cluster
+DimPlot(pbmc, reduction = "umap", label = TRUE)
+```
+
+We can also overlay the patient type (healthy control vs. COVID-19) onto the UMAP.
+
+```{r plot-umap-type}
+DimPlot(pbmc, reduction = "umap", group.by = "type", cols = c("Covid" = "#d73027", "Ctrl" = "#4575b4"))
+```
+
+---
+
+# 7. Cluster Marker Identification and Annotation
+
+To identify what biological cell types each cluster represents, we find the differentially expressed genes (markers) for each cluster compared to all other clusters.
+
+```{r find-all-markers}
+# Find markers for all clusters (only positive logFC, and present in at least 25% of cells)
+markers <- FindAllMarkers(pbmc, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25, verbose = FALSE)
+
+# Show the top 2 markers for each cluster
+markers %>%
+  group_by(cluster) %>%
+  dplyr::slice_max(order_by = avg_log2FC, n = 2) %>%
+  select(cluster, gene, avg_log2FC, p_val_adj)
+```
+
+We look up these markers against canonical PBMC cell type markers:
+- **T Cells**: `CD3D`, `CD3E` (Clusters 0, 2, 9)
+- **CD14+ Monocytes**: `CD14`, `LYZ` (Clusters 1, 4, 7, 8, 12)
+- **B Cells**: `MS4A1`, `CD79A` (Clusters 3, 10)
+- **NK Cells**: `GNLY`, `NKG7` (Clusters 5, 6)
+- **CD16+ Monocytes**: `FCGR3A` (Cluster 11)
+
+Let's visualize the expression of these marker genes across clusters.
+
+```{r feature-plots, fig.width=10, fig.height=8}
+FeaturePlot(pbmc, features = c("CD3D", "LYZ", "MS4A1", "GNLY"), ncol = 2)
+```
+
+Using these markers, we assign names to the clusters.
+
+```{r annotate-clusters}
+new_identities <- c(
+  "0" = "T Cells",
+  "1" = "CD14+ Monocytes",
+  "2" = "T Cells",
+  "3" = "B Cells",
+  "4" = "CD14+ Monocytes",
+  "5" = "NK Cells",
+  "6" = "NK Cells",
+  "7" = "CD14+ Monocytes",
+  "8" = "CD14+ Monocytes",
+  "9" = "T Cells",
+  "10" = "B Cells",
+  "11" = "CD16+ Monocytes",
+  "12" = "CD14+ Monocytes"
+)
+
+pbmc <- RenameIdents(pbmc, new_identities)
+
+# Add cell type annotation to metadata
+pbmc$cell_type <- Idents(pbmc)
+
+# Plot annotated UMAP
+DimPlot(pbmc, reduction = "umap", label = TRUE, pt.size = 0.5)
+```
+
+---
+
+# 8. Cell-Type-Specific Differential Expression
+
+We can compare COVID-19 vs. healthy controls within a specific cell type to find disease-responsive genes. Let's compare COVID-19 vs. Ctrl within **CD14+ Monocytes**.
+
+```{r cell-type-dge}
+# Subset to CD14+ Monocytes
+monocytes <- subset(pbmc, idents = "CD14+ Monocytes")
+
+# Set active identity to type (Covid vs Ctrl)
+Idents(monocytes) <- "type"
+
+# Find differentially expressed genes
+monocyte_dge <- FindMarkers(monocytes, ident.1 = "Covid", ident.2 = "Ctrl", min.pct = 0.25, logfc.threshold = 0.25, verbose = FALSE)
+
+# Show top differentially expressed genes
+monocyte_dge %>%
+  rownames_to_column("gene") %>%
+  arrange(p_val_adj) %>%
+  dplyr::slice_head(n = 10)
+```
+
+Observe that interferon-induced genes like `ISG15` and `IFITM3` are highly up-regulated in monocytes of COVID-19 patients, reflecting the active antiviral immune response.
+
+---
+
+# Interpretation Checkpoint
+
+Answer these before drawing biological conclusions:
+
+1. Why are single-cell RNA-seq count matrices extremely sparse, and how does Seurat represent them?
+2. What are the three standard QC metrics in single-cell QC, and what biological failures do they identify?
+3. Why is scaling data necessary before running PCA?
+4. What is the difference between PCA (linear) and UMAP (non-linear) dimensionality reduction? Why do we cluster cells in PC space instead of UMAP space?
+5. How does cell-type-specific differential expression differ from bulk RNA-seq differential expression?
+
+# Common Failure Modes
+
+- **Clustering directly on UMAP coordinates**: UMAP is a non-linear visualization technique that distorts distances to project high dimensions into 2D. Clustering must always be performed in the low-dimensional PC space (usually the first 10-20 PCs) to preserve linear relationship distances.
+- **Ignoring batch effects and integration needs**: When combining single-cell datasets from different patients or labs, cells often cluster by batch/sample instead of cell type. If this occurs, batch integration methods (e.g., Harmony or Seurat v5 integration) are required.
+- **Over-filtering biological signal**: Some cells (e.g., active secretory cells or cardiomyocytes) naturally express very high levels of mitochondrial or ribosomal genes. Applying a blind threshold (like < 5% mitochondrial) can delete entire cell types. Always visualize distribution plots before setting thresholds.
+
+# Exercises
+
+1. Calculate the percentage of ribosomal genes (names starting with `RPS` or `RPL`) in our `pbmc` object using `PercentageFeatureSet()`. Plot ribosomal percentage vs. mitochondrial percentage as a scatter plot.
+2. Adjust the clustering resolution parameter in `FindClusters()` from `0.5` to `1.2`. Re-run the clustering and check the number of clusters. Does it split the T-cell population into subgroups?
+3. Perform marker gene identification for the NK cell cluster (Cluster 6/NK Cells) compared only to the T-cell clusters. What are the top 5 markers distinguishing NK cells from T cells?
+4. Identify the top 5 up-regulated genes in **B Cells** of COVID-19 patients compared to healthy controls. Contrast these hits with the CD14+ Monocyte hits.
+
+# Key Takeaways
+
+- Single-cell RNA-seq allows cell-by-cell transcriptional profiling, revealing cell type heterogeneity that is hidden in bulk RNA-seq.
+- Standard Seurat workflows include: cell filtering (QC) -> normalization -> variable gene selection -> PCA -> graph-based clustering -> UMAP visualization -> cell type annotation.
+- Canonical marker genes (e.g., `CD3D` for T cells, `MS4A1` for B cells) are used to annotate clusters with biological names.
+- By comparing conditions within specific cell types, we can identify cell-type-specific disease responses (e.g., interferon responses in monocytes).
+
+# Memorable Rule
+
+Assay decides model.
+
+# Reproducibility
+
+```{r session-info}
+sessionInfo()
+```

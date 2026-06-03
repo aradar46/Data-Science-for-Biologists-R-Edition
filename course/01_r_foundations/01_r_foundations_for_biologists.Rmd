@@ -223,6 +223,10 @@ Answer these before moving on:
 - Functions make data validation repeatable.
 - Stable paths and identifier checks prevent many downstream analysis errors.
 
+# Memorable Rule
+
+IDs before joins.
+
 # Reproducibility
 
 ```{r session-info}

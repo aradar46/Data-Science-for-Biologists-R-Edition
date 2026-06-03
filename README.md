@@ -1,8 +1,8 @@
-# R for Biologists — Data Science, Bioinformatics, and Machine Learning in R
+# R for Biologists - Data Science, Bioinformatics, and Machine Learning in R
 
-**A free, complete, executable R course covering data wrangling, statistics, machine learning with tidymodels, omics analysis, survival analysis, and reproducible bioinformatics — built on real clinical and expression datasets.**
+**A free, hands-on R course covering data wrangling, statistics, machine learning with tidymodels, omics analysis, survival analysis, and reproducible bioinformatics — built on real clinical and expression datasets.**
 
-No placeholder code. Every notebook runs. Beginner-friendly.
+No placeholder code. Beginner-friendly.
 
 ---
 
@@ -90,25 +90,47 @@ By the end of this course you will be able to:
 | 5 | Modeling foundations with tidymodels | `course/05_modeling_foundations/` |
 | 6 | Biomedical machine learning | `course/06_biomedical_ml/` |
 | 7 | Omics foundations | `course/07_omics_foundations/` |
-| 8 | Survival analysis and omics integration | `course/08_multiomics_and_survival/` |
-| 9 | Reproducible engineering for biologists | `course/09_reproducible_engineering/` |
-| 10 | Capstone project | `course/10_capstone/` |
+| 8 | Bulk RNA-seq differential expression | `course/08_bulk_rnaseq_differential_expression/` |
+| 9 | Pathway enrichment analysis | `course/09_pathway_enrichment/` |
+| 10 | Single-cell RNA-seq analysis | `course/10_single_cell_rnaseq/` |
+| 11 | Survival analysis and omics integration | `course/11_survival_analysis_and_omics_integration/` |
+| 12 | Reproducible engineering for biologists | `course/12_reproducible_engineering/` |
+| 13 | Capstone project | `course/13_capstone/` |
 
 Each module follows a consistent structure: biological question → learning objectives → data validation → concept explanation → worked example → exercises → common mistakes → key takeaways → `sessionInfo()`.
 
 ---
 
+## Fast Path
+
+Do not force yourself through all 14 modules linearly. Pick the route that matches your immediate goal:
+
+- **Core data science route:** 0, 1, 2, 3, 4, 7, 12, 13
+- **Bioinformatics route:** 0, 2, 4, 7, 8, 9, 12, 13
+- **ML/survival route:** 0, 2, 4, 5, 6, 11, 13
+
+Each route is designed to get you from foundations to a project-ready workflow quickly.
+
+---
+
 ## Datasets
 
-All core modules use two fully matched, bundled datasets — no external downloads required:
+Core modules use matched, bundled datasets:
 
 | File | Description |
 |---|---|
 | `data/clinical.csv` | 614 breast cancer patients: treatment, follow-up time, event status |
 | `data/omics.csv` | Same 614 patients: 1,691 processed microarray expression probe columns |
 | `data/metabric_clinical_and_expression_data.csv` | METABRIC cohort: 1,904 patients, clinical and selected expression features |
+| `data/rnaseq_counts_filtered.csv` | RNA-seq count matrix (Ensembl IDs) for colitis model (6 samples) |
+| `data/rnaseq_metadata.csv` | Sample metadata (colitis model) |
+| `data/rnaseq_mouse_genes.txt` | Gene symbol lookup table for mouse Ensembl IDs |
+| `data/MSigDB_files/` | Local MSigDB pathway signatures (Hallmark, GO BP, KEGG) |
+| `data/seurat_pbmc_subset.rds` | Cleaned 1,500-cell PBMC single-cell RNA-seq subset (COVID-19 vs. Control) |
 
-The `clinical.csv` + `omics.csv` pair runs as the integrative project arc across Modules 7, 8, and the capstone: joining, QC, differential analysis, survival modeling, penalized regression, and reproducible reporting.
+The `clinical.csv` + `omics.csv` pair runs as the integrative project arc across Modules 7, 11, and 13: joining, QC, differential analysis, survival modeling, penalized regression, and reproducible reporting.
+
+Most analyses run from bundled files. Module 9 includes optional `enrichR` examples that query online enrichment databases; the local `fgsea` examples use bundled MSigDB GMT files.
 
 ---
 
@@ -116,10 +138,10 @@ The `clinical.csv` + `omics.csv` pair runs as the integrative project arc across
 
 ```
 r-for-biologists/
-├── course/                   11 R Markdown modules (00–10), each self-contained
-├── exercises/                8 exercise sheets (Modules 1–8)
+├── course/                   14 R Markdown modules (00–13), each self-contained
+├── exercises/                11 exercise sheets (Modules 1–11 where practice is assigned)
 ├── solutions/                Executable R Markdown solutions with explanations
-├── data/                     Bundled clinical and expression datasets
+├── data/                     Bundled clinical, expression, RNA-seq, and single-cell datasets
 ├── install_dependencies.R    Run once to install all required packages
 ├── renv.lock                 Pinned package versions (R 4.5.0)
 └── DESCRIPTION               Package dependency declarations
@@ -134,8 +156,16 @@ r-for-biologists/
 | `tidyverse` | Data wrangling, visualization, functional programming |
 | `tidymodels` | Machine learning workflows, resampling, tuning |
 | `limma` | Differential expression for continuous expression matrices |
+| `DESeq2` | Differential expression for count-based RNA-seq matrices |
+| `Seurat` | Single-cell RNA-seq QC, dimensionality reduction, and clustering |
 | `survival` + `survminer` | Kaplan-Meier curves, Cox models, proportional hazards checks |
 | `glmnet` | Penalized regression (elastic net, lasso) for high-dimensional omics |
+| `enrichR` + `fgsea` | Pathway enrichment analysis (over-representation and GSEA) |
+| `pheatmap` | Clustered expression heatmaps |
+| `patchwork` | Multi-panel single-cell visualizations |
+| `viridis` | Colorblind-friendly heatmap palettes in exercises and solutions |
+| `scales` | Formatting and transformation helpers for visualization |
+| `rmarkdown` + `knitr` | Executing and rendering R Markdown notebooks |
 | `renv` | Reproducible R environments with locked package versions |
 | `here` | Portable file paths across machines and operating systems |
 
@@ -147,27 +177,42 @@ This course enforces decisions that introductory courses typically skip:
 
 - **No leakage:** preprocessing and feature selection always happen inside resampling folds or after splitting
 - **No dummy data in core modules:** every advanced topic uses the bundled clinical + omics datasets
-- **Censoring is handled correctly:** survival outcomes are never converted to binary logistic regression
+- **Censoring is handled correctly in survival modules:** binary simplifications are explicitly labeled as teaching examples
 - **Every notebook validates its data:** patient IDs are aligned explicitly before any join or model
 - **Interpretation is separated from mechanism:** association ≠ causation, in-sample ≠ validated
 - **Every notebook is self-contained:** each file runs independently from top to bottom with no hidden state
+
+## Memorable Rules
+
+- IDs before joins.
+- Assay decides model.
+- Split before preprocessing.
+- Censored is not "no event."
+- Feature importance is not mechanism.
+- In-sample is not validated.
 
 ---
 
 ## Exercises and Solutions
 
-`exercises/` contains 8 exercise sheets (one per module), each with 5 questions covering code tasks and written biological interpretation.
+`exercises/` contains 11 exercise sheets (one per active module), each with 4-5 questions covering code tasks and written biological interpretation.
 
-`solutions/` contains executable R Markdown solutions for Modules 1, 2, 4, 5, and 8, with annotated explanations, not just code.
+`solutions/` contains executable R Markdown solutions for Modules 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, and 11, with annotated explanations, not just code.
+
+---
+
+## Omics Analysis Checklist Card
+
+A printable quick-reference checklist is available at [`course/omics_analysis_checklist.md`](course/omics_analysis_checklist.md), compiling data-validation, assay-model compatibility, leakage control, and biological interpretation boundaries.
 
 ---
 
 ## Capstone Project
 
-`course/10_capstone/` contains:
+`course/13_capstone/` contains:
 
-- **`10_capstone_brief.Rmd`** — project scope, required analysis sections, and grading rubric
-- **`10_capstone_starter.Rmd`** — parameterized starter notebook with required section scaffolding and code stubs
+- **`13_capstone_brief.Rmd`** — project scope, required analysis sections, and grading rubric
+- **`13_capstone_starter.Rmd`** — parameterized starter notebook with required section scaffolding and code stubs
 
 ---
 
@@ -179,6 +224,8 @@ This course enforces decisions that introductory courses typically skip:
 - [Applied Predictive Modeling](http://appliedpredictivemodeling.com/) — Kuhn & Johnson
 - [Survival Analysis: A Self-Learning Text](https://link.springer.com/book/10.1007/978-1-4419-6646-9) — Kleinbaum & Klein
 - [Happy Git and GitHub for the useR](https://happygitwithr.com/) — Bryan
+- [NBIS Bulk RNA-seq Workshop](https://github.com/NBISweden/workshop-RNAseq) — National Bioinformatics Infrastructure Sweden
+- [NBIS Single-Cell RNA-seq Workshop](https://github.com/NBISweden/workshop-scRNAseq) — National Bioinformatics Infrastructure Sweden
 
 ---
 
@@ -190,3 +237,5 @@ Apache License 2.0. See [LICENSE](LICENSE).
 
 The original Python course was developed by the Data Science Academy at AstraZeneca [data-science-python-course](https://github.com/AstraZeneca/data-science-python-course). 
 This R edition is an independent redesign that replaces all Python content with R-native, biology-centered, reproducible workflows. Also, other content has been added, and will be added in the future, to make the course more complete and useful.  
+
+

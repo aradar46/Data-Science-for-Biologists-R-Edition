@@ -68,7 +68,7 @@ omics <- read_csv(here("data", "omics.csv"), show_col_types = FALSE)
 
 stopifnot(!anyDuplicated(clinical$patientID))
 stopifnot(!anyDuplicated(omics$patientID))
-stopifnot(setequal(clinical$patientID, omics$patientID))
+stopifnot(base::setequal(clinical$patientID, omics$patientID))
 
 omics_aligned <- omics %>%
   slice(match(clinical$patientID, patientID))
@@ -436,6 +436,10 @@ Before trusting any biomedical ML model, answer:
 - Feature selection must be training-only.
 - Predictive features are not automatically biological mechanisms.
 - Censored survival outcomes should eventually be modeled with survival methods.
+
+# Memorable Rule
+
+Feature importance is not mechanism.
 
 # Reproducibility
 

@@ -139,7 +139,7 @@ alignment_summary <- tibble(
     !anyDuplicated(clinical_ids),
     !anyDuplicated(omics_ids),
     length(clinical_ids) == length(omics_ids),
-    setequal(clinical_ids, omics_ids),
+    base::setequal(clinical_ids, omics_ids),
     identical(clinical_ids, omics_ids)
   )
 )
@@ -210,6 +210,10 @@ Before modeling, answer:
 - Data validation is not optional setup work; it is part of the scientific analysis.
 - The capstone dataset is patient-level survival data with matched high-dimensional expression features.
 - Reproducibility means another person can rerun the analysis and inspect every decision.
+
+# Memorable Rule
+
+IDs before joins.
 
 # Reproducibility
 

@@ -78,7 +78,7 @@ omics <- read_csv(here("data", "omics.csv"), show_col_types = FALSE)
 
 stopifnot(!anyDuplicated(clinical$patientID))
 stopifnot(!anyDuplicated(omics$patientID))
-stopifnot(setequal(clinical$patientID, omics$patientID))
+stopifnot(base::setequal(clinical$patientID, omics$patientID))
 
 omics_aligned <- omics %>%
   slice(match(clinical$patientID, patientID))
@@ -409,6 +409,10 @@ Answer these before reporting an omics result:
 - Multiple testing correction is mandatory for probe-level scans.
 - Ranked molecular results are useful only when their identifier type and annotation limits are explicit.
 - Omics findings should be reported as evidence under assumptions, not as automatic mechanisms.
+
+# Memorable Rule
+
+Assay decides model.
 
 # Reproducibility
 

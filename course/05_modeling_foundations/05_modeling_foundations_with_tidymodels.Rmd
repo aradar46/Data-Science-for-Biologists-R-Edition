@@ -495,6 +495,10 @@ For each model, answer:
 - Tuning belongs inside cross-validation on the training set.
 - Feature importance is model behavior, not biological proof.
 
+# Memorable Rule
+
+Split before preprocessing.
+
 # Reproducibility
 
 ```{r session-info}

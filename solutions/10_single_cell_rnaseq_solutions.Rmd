@@ -1,0 +1,193 @@
+---
+title: "Solutions — Module 10: Single-Cell RNA-seq Analysis"
+output:
+  html_document:
+    toc: true
+    toc_depth: 2
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+library(Seurat)
+library(tidyverse)
+library(here)
+library(ggplot2)
+```
+
+## Setup and Object Recovery
+
+We load the data, create the Seurat object, and run the standard pipeline up to PCA, clustering, and cell type annotation, as described in the tutorial.
+
+```{r prep-seurat}
+# Load the downsampled dataset
+pbmc_in <- readRDS(here("data", "seurat_pbmc_subset.rds"))
+counts <- pbmc_in[["RNA"]]$counts
+metadata <- pbmc_in@meta.data %>% select(orig.ident, type)
+
+# Run standard pipeline
+pbmc <- CreateSeuratObject(counts = counts, meta.data = metadata, project = "PBMC_Covid")
+pbmc <- PercentageFeatureSet(pbmc, pattern = "^MT-", col.name = "percent_mito")
+pbmc <- subset(pbmc, subset = nFeature_RNA > 200 & percent_mito < 10)
+
+pbmc <- NormalizeData(pbmc, verbose = FALSE)
+pbmc <- FindVariableFeatures(pbmc, verbose = FALSE)
+pbmc <- ScaleData(pbmc, verbose = FALSE)
+pbmc <- RunPCA(pbmc, verbose = FALSE)
+pbmc <- RunUMAP(pbmc, dims = 1:12, verbose = FALSE)
+pbmc <- FindNeighbors(pbmc, dims = 1:12, verbose = FALSE)
+
+# Default resolution 0.5 clustering
+pbmc <- FindClusters(pbmc, resolution = 0.5, verbose = FALSE)
+
+# Rename idents
+new_identities <- c(
+  "0" = "T Cells",
+  "1" = "CD14+ Monocytes",
+  "2" = "T Cells",
+  "3" = "B Cells",
+  "4" = "CD14+ Monocytes",
+  "5" = "NK Cells",
+  "6" = "NK Cells",
+  "7" = "CD14+ Monocytes",
+  "8" = "CD14+ Monocytes",
+  "9" = "T Cells",
+  "10" = "B Cells",
+  "11" = "CD16+ Monocytes",
+  "12" = "CD14+ Monocytes"
+)
+pbmc <- RenameIdents(pbmc, new_identities)
+pbmc$cell_type <- Idents(pbmc)
+```
+
+---
+
+## Exercise 10.1 — Ribosomal Gene Profiling
+
+### 1. Calculate ribosomal percentage
+
+In human cells, ribosomal proteins start with `RPS` (small subunit) or `RPL` (large subunit).
+
+```{r calc-ribo}
+pbmc <- PercentageFeatureSet(pbmc, pattern = "^RP[SL]", col.name = "percent_ribo")
+head(pbmc@meta.data)
+```
+
+### 2. Scatter plot: Ribo vs. Mito
+
+```{r plot-ribo-mito}
+FeatureScatter(pbmc, feature1 = "percent_ribo", feature2 = "percent_mito")
+```
+
+### 3. Discussion
+
+- **Correlation**: We observe a slightly negative or neutral correlation between ribosomal and mitochondrial percentages. High mitochondrial content (>10%) is typically a sign of cell death (leakage of cytoplasmic RNA, leaving only organelles like mitochondria behind).
+- **Ribosomal Interpretation**: High ribosomal protein gene expression is characteristic of active, healthy, and rapidly growing or translating cells (e.g., active lymphocytes). It does *not* indicate cellular damage or death. Therefore, we filter out cells with high mitochondrial content, but we usually retain cells with high ribosomal content.
+
+---
+
+## Exercise 10.2 — Granular Clustering Resolution
+
+### 1 & 2. Run clustering with resolution = 1.2
+
+```{r high-res-clustering}
+# Find clusters at high resolution
+pbmc <- FindClusters(pbmc, resolution = 1.2, verbose = FALSE)
+
+# Number of clusters
+length(unique(pbmc$seurat_clusters))
+table(pbmc$seurat_clusters)
+```
+
+By changing the resolution from `0.5` (which generated 13 clusters, labeled 0–12) to `1.2`, we now get 15 clusters.
+
+### 3. Generate high-resolution UMAP
+
+```{r plot-high-res-umap}
+DimPlot(pbmc, reduction = "umap", group.by = "seurat_clusters", label = TRUE)
+```
+
+### 4. Inspect T-cell clusters
+
+Under the default resolution of 0.5, T-cells occupied clusters 0, 2, and 9.
+At resolution 1.2, we can see that the T-cell population is split into more granular sub-clusters. This allows researchers to identify CD4+ vs CD8+ T cells, or naive vs memory T cell states, which require higher resolution to resolve.
+
+---
+
+## Exercise 10.3 — NK Cells vs. T Cells Differential Expression
+
+### 1. Run markers comparing NK cells vs. T cells
+
+We reset the identities to the annotated `cell_type` and compare them.
+
+```{r nk-vs-t}
+Idents(pbmc) <- "cell_type"
+
+nk_vs_t_markers <- FindMarkers(
+  object = pbmc,
+  ident.1 = "NK Cells",
+  ident.2 = "T Cells",
+  min.pct = 0.25,
+  logfc.threshold = 0.25,
+  verbose = FALSE
+)
+```
+
+### 2 & 3. Filter and list top 5 NK markers
+
+```{r show-nk-markers}
+significant_nk <- nk_vs_t_markers %>%
+  rownames_to_column("gene") %>%
+  filter(p_val_adj < 0.05, avg_log2FC > 0.5) %>%
+  arrange(desc(avg_log2FC))
+
+significant_nk %>%
+  dplyr::slice_head(n = 5) %>%
+  select(gene, avg_log2FC, p_val_adj, pct.1, pct.2)
+```
+
+### 4. Discussion
+
+The top marker genes (such as `NKG7`, `GNLY`, `GZMB`, `PRF1`, and `CST7`) encode cytotoxic effector molecules:
+- **`GZMB`** (Granzyme B) and **`PRF1`** (Perforin) are responsible for forming pores in target cell membranes and inducing apoptosis.
+- **`GNLY`** (Granulysin) has antimicrobial activity and induces apoptosis in infected cells.
+- **`NKG7`** is involved in cytotoxic granule exocytosis.
+These are classic markers of natural killer (NK) cells and cytotoxic T lymphocytes, confirming that Cluster 6 has cytotoxic effector identity.
+
+---
+
+## Exercise 10.4 — B Cell Antiviral Response in COVID-19
+
+### 1 & 2. Run B Cell COVID-19 vs. Control DGE
+
+```{r b-cell-dge}
+# Subset to B Cells only
+b_cells <- subset(pbmc, idents = "B Cells")
+
+# Compare Covid vs Control
+Idents(b_cells) <- "type"
+b_cell_dge <- FindMarkers(
+  object = b_cells,
+  ident.1 = "Covid",
+  ident.2 = "Ctrl",
+  min.pct = 0.25,
+  logfc.threshold = 0.25,
+  verbose = FALSE
+)
+```
+
+### 3. List top 5 up-regulated genes in B cells
+
+```{r show-b-cell-up}
+b_cell_dge %>%
+  rownames_to_column("gene") %>%
+  filter(p_val_adj < 0.05, avg_log2FC > 0) %>%
+  arrange(desc(avg_log2FC)) %>%
+  dplyr::slice_head(n = 5) %>%
+  select(gene, avg_log2FC, p_val_adj)
+```
+
+### 4. Comparison with CD14+ Monocyte response
+
+- In CD14+ Monocytes, the top up-regulated genes in COVID-19 included `ISG15`, `IFITM3`, `LYZ`, and interferon-responsive targets.
+- In B Cells, the top up-regulated genes include many of the same interferon-stimulated genes (ISGs), such as **`ISG15`**, **`IFI6`**, and **`IFITM3`**.
+- **Conclusion**: Both B cells and CD14+ monocytes exhibit a strong Type I interferon signature (`ISG15`, `IFI6`, `IFITM3`) indicating a systemic antiviral response in blood cells of COVID-19 patients. However, cell-type-specific responses are also present: monocytes express more inflammation-promoting cytokines and chemokines, whereas B cells show activation of pathways involved in antibody production and presentation.

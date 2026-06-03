@@ -1,0 +1,306 @@
+---
+title: "R for Biologists | Module 9 — Pathway Enrichment: Gene Ontology and Gene Set Enrichment Analysis"
+output:
+  html_document:
+    toc: true
+    toc_depth: 2
+---
+
+> **Acknowledgment:** This module is adapted from the RNA-seq workshop by the National Bioinformatics Infrastructure Sweden (NBIS) (https://github.com/NBISweden/workshop-RNAseq).
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  message = FALSE,
+  warning = FALSE,
+  fig.width = 8,
+  fig.height = 5
+)
+
+set.seed(42)
+```
+
+# Biological Question
+
+Which biological pathways, functional systems, and Gene Ontology (GO) terms are altered in mouse colons during DSS-induced colitis, and what molecular mechanisms do they reveal about the disease?
+
+# Learning Objectives
+
+By the end of this module, learners should be able to:
+
+- explain the conceptual differences between Over-Representation Analysis (ORA) and Gene Set Enrichment Analysis (GSEA), including their input formats and statistical assumptions,
+- map Ensembl identifiers to gene symbols programmatically using a local annotation reference,
+- perform ORA using the `enrichR` package to query Gene Ontology (GO) databases,
+- calculate enrichment significance, adjust for multiple testing (FDR), and visualize ORA results as bar plots,
+- rank genes using fold change and p-value metrics for GSEA,
+- run GSEA using the `fgsea` package with local MSigDB gene signature GMT files,
+- interpret GSEA output (NES, p-values, running enrichment scores) and identify up- and down-regulated pathways,
+- write an interpretation paragraph connecting pathway enrichment results to colitis pathophysiology.
+
+# Prerequisites
+
+- Module 2: data wrangling and validation.
+- Module 4: statistical reasoning and multiple testing.
+- Module 8: RNA-seq count-based differential expression.
+- Packages: `tidyverse`, `here`, `enrichR`, `fgsea`, `pheatmap`.
+- Datasets: `data/rnaseq_dge_results.csv` (output from Module 8), `data/rnaseq_mouse_genes.txt`, `data/MSigDB_files/`.
+
+# Setup
+
+```{r packages}
+library(tidyverse)
+library(here)
+library(enrichR)
+library(fgsea)
+library(pheatmap)
+```
+
+# Data Input and Mapping
+
+Pathway enrichment databases are usually indexed by human-readable gene symbols (e.g. `TNF`, `IL6`) rather than Ensembl transcript IDs (e.g. `ENSMUSG00000024401`). We must first load our differential expression results and map the Ensembl IDs to gene symbols.
+
+Let's load the DGE results and the gene mapping reference table.
+
+```{r load-data}
+dge_path <- here("data", "rnaseq_dge_results.csv")
+genes_map_path <- here("data", "rnaseq_mouse_genes.txt")
+
+# Read DGE results (verify file exists, otherwise we'll run a fallback calculation)
+if (!file.exists(dge_path)) {
+  stop("Differential expression results not found. Please complete Module 8 first.")
+}
+
+dge_results <- read_csv(dge_path, show_col_types = FALSE)
+genes_map <- read_tsv(genes_map_path, show_col_types = FALSE)
+```
+
+Now, map the Ensembl IDs to gene symbols using a left join.
+
+```{r map-genes}
+annotated_results <- dge_results %>%
+  left_join(
+    genes_map %>% select(ensembl_gene_id, external_gene_name),
+    by = "ensembl_gene_id"
+  ) %>%
+  mutate(
+    gene_symbol = if_else(is.na(external_gene_name) | external_gene_name == "", ensembl_gene_id, external_gene_name)
+  ) %>%
+  select(-external_gene_name)
+
+annotated_results %>%
+  arrange(padj) %>%
+  select(ensembl_gene_id, gene_symbol, log2FoldChange, pvalue, padj) %>%
+  dplyr::slice_head(n = 10)
+```
+
+# Over-Representation Analysis (ORA)
+
+Over-Representation Analysis evaluates whether the number of significant genes in our list that fall into a specific pathway is larger than would be expected by random chance (modeled using the Hypergeometric distribution).
+
+ORA requires a user-defined threshold to select "significant" genes (e.g. FDR < 0.05 and absolute log2 fold change > 1).
+
+Let's extract the significant up-regulated and down-regulated gene lists as gene symbols.
+
+```{r extract-gene-lists}
+sig_up <- annotated_results %>%
+  filter(padj < 0.05, log2FoldChange > 1) %>%
+  pull(gene_symbol)
+
+sig_down <- annotated_results %>%
+  filter(padj < 0.05, log2FoldChange < -1) %>%
+  pull(gene_symbol)
+
+# Clean up lists by removing empty values or NAs
+sig_up <- sig_up[!is.na(sig_up) & sig_up != ""]
+sig_down <- sig_down[!is.na(sig_down) & sig_down != ""]
+
+# Check sizes
+tibble(
+  sig_up_count = length(sig_up),
+  sig_down_count = length(sig_down)
+)
+```
+
+## Running ORA using enrichR
+
+We query the Gene Ontology Biological Process database (`GO_Biological_Process_2023`).
+
+```{r run-enrichr}
+db <- "GO_Biological_Process_2023"
+
+# Query the databases
+enrich_up <- enrichr(genes = sig_up, databases = db)
+enrich_down <- enrichr(genes = sig_down, databases = db)
+
+# Convert results to tibble
+enrich_up_tb <- as_tibble(enrich_up[[db]])
+enrich_down_tb <- as_tibble(enrich_down[[db]])
+```
+
+Let's view the top 10 enriched pathways for up-regulated genes.
+
+```{r view-enrich-up}
+enrich_up_tb %>%
+  arrange(P.value) %>%
+  select(Term, Overlap, P.value, Adjusted.P.value) %>%
+  dplyr::slice_head(n = 10)
+```
+
+Let's plot the top 10 enriched pathways for up-regulated genes.
+
+```{r plot-enrich-up}
+enrich_up_tb %>%
+  arrange(P.value) %>%
+  dplyr::slice_head(n = 10) %>%
+  mutate(Term = fct_reorder(Term, -P.value)) %>%
+  ggplot(aes(x = -log10(P.value), y = Term)) +
+  geom_bar(stat = "identity", fill = "#d73027") +
+  labs(
+    title = "GO Biological Process: Up-regulated in Colitis",
+    x = "-Log10 P-value",
+    y = NULL
+  ) +
+  theme_minimal()
+```
+
+# Gene Set Enrichment Analysis (GSEA)
+
+A major limitation of ORA is that it depends on an arbitrary significance threshold and discards all information about genes that fall just below the threshold. 
+
+Gene Set Enrichment Analysis (GSEA) does not use a threshold. Instead, it ranks **all** genes in the genome (from most up-regulated to most down-regulated) and calculates a **running enrichment score** to see if the genes in a pathway tend to accumulate at the extremes of the ranked list.
+
+## 1. Preparing the ranked gene vector
+
+We rank our genes by a score that combines the direction of change (sign of log2 fold change) and statistical significance ($-\log_{10}$ p-value). Because pathway databases use uppercase gene symbols, we convert our symbols to uppercase.
+
+```{r prepare-ranked-list}
+# Handle duplicate gene symbols by selecting the probe/Ensembl ID with the lowest p-value
+ranked_genes <- annotated_results %>%
+  filter(!is.na(gene_symbol) & gene_symbol != "") %>%
+  mutate(
+    rank_score = sign(log2FoldChange) * -log10(pmax(pvalue, .Machine$double.xmin))
+  ) %>%
+  group_by(gene_symbol) %>%
+  dplyr::slice_min(pvalue, n = 1, with_ties = FALSE) %>%
+  ungroup() %>%
+  mutate(gene_symbol = toupper(gene_symbol))
+
+# Convert to named vector
+ranked_vector <- ranked_genes$rank_score
+names(ranked_vector) <- ranked_genes$gene_symbol
+
+# Sort decreasing
+ranked_vector <- sort(ranked_vector, decreasing = TRUE)
+head(ranked_vector)
+```
+
+## 2. Load GMT Signature Files
+
+We load the MSigDB Hallmark signatures from our local data folder.
+
+```{r load-signatures}
+gmt_path <- here("data", "MSigDB_files", "h.all.v6.2.symbols.gmt.txt")
+hallmark_pathways <- gmtPathways(gmt_path)
+```
+
+## 3. Running fgsea
+
+We use the `fgsea()` function to perform fast gene set enrichment analysis.
+
+```{r run-fgsea}
+fgsea_res <- fgsea(
+  pathways = hallmark_pathways,
+  stats = ranked_vector,
+  minSize = 10,
+  maxSize = 500
+)
+
+fgsea_res_tb <- as_tibble(fgsea_res) %>%
+  arrange(pval)
+
+fgsea_res_tb %>%
+  select(pathway, pval, padj, NES, size) %>%
+  dplyr::slice_head(n = 10)
+```
+
+- **NES (Normalized Enrichment Score)**: Positive scores indicate enrichment at the top of the ranked list (up-regulated in colitis); negative scores indicate enrichment at the bottom (down-regulated).
+- **padj**: Benjamini-Hochberg adjusted p-value.
+
+Let's visualize the GSEA results by plotting the NES for all significantly altered Hallmark pathways (FDR < 0.05).
+
+```{r plot-gsea}
+fgsea_res_tb %>%
+  filter(padj < 0.05) %>%
+  mutate(pathway = str_replace(pathway, "^HALLMARK_", "")) %>%
+  mutate(pathway = fct_reorder(pathway, NES)) %>%
+  ggplot(aes(x = NES, y = pathway, fill = NES > 0)) +
+  geom_bar(stat = "identity") +
+  scale_fill_manual(values = c("TRUE" = "#d73027", "FALSE" = "#4575b4"), labels = c("TRUE" = "Up-regulated", "FALSE" = "Down-regulated")) +
+  labs(
+    title = "GSEA: Hallmark Pathways (FDR < 0.05)",
+    x = "Normalized Enrichment Score (NES)",
+    y = NULL,
+    fill = "Direction"
+  ) +
+  theme_minimal()
+```
+
+## 4. Plotting GSEA Running Enrichment Scores
+
+For a specific pathway of interest, we can plot the running enrichment score. Let's select the top up-regulated pathway.
+
+```{r plot-running-score}
+top_pathway <- fgsea_res_tb %>%
+  filter(NES > 0) %>%
+  arrange(pval) %>%
+  dplyr::slice(1) %>%
+  pull(pathway)
+
+plotEnrichment(hallmark_pathways[[top_pathway]], ranked_vector) +
+  labs(
+    title = paste("GSEA Running Enrichment Score:", top_pathway),
+    subtitle = "Peak enrichment score represents the degree of coordinate pathway regulation"
+  )
+```
+
+The vertical black bars along the x-axis represent the positions of the pathway's genes within the ranked genome. The green line shows the cumulative sum running score. The peak score represents the enrichment score (ES).
+
+# Interpretation Checkpoint
+
+Answer these before drawing biological conclusions:
+
+1. Did you map Ensembl IDs to symbols, and how did you handle duplicate symbols?
+2. What are the key mathematical differences between ORA and GSEA?
+3. In ORA, did you run the enrichment on up- and down-regulated genes separately? (Why is running them together a mistake?)
+4. What does the GSEA Normalized Enrichment Score (NES) represent?
+5. How does the colitis biological phenotype (tissue damage, immune infiltration) explain both the up-regulated inflammation pathways and down-regulated metabolic pathways?
+
+# Common Failure Modes
+
+- **Mixing up- and down-regulated genes in ORA**: Running ORA on a single combined list of all significant genes hides the direction of change. A pathway can appear significant, but you will not know if it is turned on or off. Always analyze up- and down-regulated lists separately.
+- **Ignoring duplicate gene symbols**: Multiple microarray probes or transcript isoforms can map to the same gene symbol. Failing to collapse duplicates when ranking for GSEA creates artificial duplicates that skew the random permutation step.
+- **Using an arbitrary rank metric for GSEA without biological justification**: Ranking genes by p-value alone ignores fold change direction, while ranking by fold change alone ignores statistical noise. A combined metric (like `sign(LFC) * -log10(p-value)`) is standard because it balances effect size and statistical confidence.
+
+# Exercises
+
+1. Perform ORA on the list of significant *down-regulated* genes (`sig_down`) using the `GO_Biological_Process_2023` database. Plot the top 10 terms and compare their biological themes with the up-regulated terms.
+2. Load the KEGG pathways database signature from the local GMT file (`data/MSigDB_files/c2.cp.kegg.v6.2.symbols.gmt.txt`) using `gmtPathways()`. Run `fgsea()` and identify the top 5 altered KEGG pathways.
+3. Compare the enrichment results for the Hallmark pathway **HALLMARK_INFLAMMATORY_RESPONSE** between ORA (from the up-regulated list) and GSEA. Do both methods confirm its activation?
+4. Modify the gene ranking metric for GSEA to use the log2 fold change directly (`rank_score = log2FoldChange`) without incorporating the p-value. Run `fgsea()` again and compare the top 5 pathways. Do they differ? Why or why not?
+
+# Key Takeaways
+
+- Pathway enrichment analysis translates gene-level statistical results into biological systems and pathways.
+- ORA tests if a discrete list of significant genes is enriched in a pathway using the Hypergeometric test.
+- GSEA evaluates coordinate expression shifts across the entire ranked genome, providing higher sensitivity to detect subtle but consistent changes.
+- In colitis models, up-regulated genes are associated with immune activation (cytokines, cell migration), while down-regulated genes reflect metabolic and functional collapse of the colon tissue.
+
+# Memorable Rule
+
+Assay decides model.
+
+# Reproducibility
+
+```{r session-info}
+sessionInfo()
+```

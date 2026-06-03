@@ -396,6 +396,10 @@ For each statistical result, answer:
 - Linear models can adjust for covariates, but only thoughtful design supports strong conclusions.
 - Multiple testing correction is essential when scanning many molecular features.
 
+# Memorable Rule
+
+Assay decides model.
+
 # Reproducibility
 
 ```{r session-info}

@@ -1,0 +1,181 @@
+---
+title: "Solutions — Module 3: Visualization for Biology"
+output:
+  html_document:
+    toc: true
+    toc_depth: 2
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+library(tidyverse)
+library(here)
+library(pheatmap)
+```
+
+```{r load-data}
+clinical <- read_csv(here("data", "clinical.csv"), show_col_types = FALSE)
+omics    <- read_csv(here("data", "omics.csv"),    show_col_types = FALSE)
+
+omics_aligned <- omics %>% dplyr::slice(match(clinical$patientID, patientID))
+stopifnot(identical(clinical$patientID, omics_aligned$patientID))
+
+expression_matrix <- omics_aligned %>% select(-patientID) %>% as.matrix()
+rownames(expression_matrix) <- omics_aligned$patientID
+```
+
+# Solution 3.1 — Distribution plot
+
+Let's plot the histogram of follow-up time colored by event status.
+
+```{r sol-3-1}
+median_time <- median(clinical$time)
+
+ggplot(clinical, aes(x = time, fill = factor(status))) +
+  geom_histogram(bins = 30, alpha = 0.7, position = "identity", color = "white") +
+  geom_vline(xintercept = median_time, linetype = "dashed", color = "red", size = 1) +
+  scale_fill_manual(
+    values = c("0" = "lightblue", "1" = "coral"),
+    labels = c("0" = "Censored", "1" = "Event")
+  ) +
+  labs(
+    title = "Follow-up Time Distribution",
+    subtitle = paste("Median follow-up time is", round(median_time, 1), "years"),
+    x = "Time (years)",
+    y = "Number of Patients",
+    fill = "Patient Status"
+  ) +
+  theme_minimal()
+```
+
+**Biologist-Friendly Caption**: This histogram shows the distribution of follow-up times for the 614 breast cancer patients in years. Patients who did not experience the clinical event (censored) are shown in blue, while patients who did are shown in orange. The red dashed line marks the median follow-up time of 5.0 years.
+
+---
+
+# Solution 3.2 — Group comparison
+
+Let's select 3 probes, join with treatment, and plot.
+
+```{r sol-3-2}
+# Select 3 probes
+selected_probes <- colnames(expression_matrix)[1:3]
+
+# Create long table
+plot_data <- clinical %>%
+  select(patientID, treatment) %>%
+  mutate(treatment_group = factor(if_else(treatment == 1, "Chemo", "Standard"))) %>%
+  bind_cols(as.data.frame(expression_matrix[, selected_probes])) %>%
+  pivot_longer(cols = all_of(selected_probes), names_to = "Probe", values_to = "Expression")
+
+ggplot(plot_data, aes(x = treatment_group, y = Expression, fill = treatment_group)) +
+  geom_boxplot(outlier.shape = NA, alpha = 0.5) +
+  geom_jitter(width = 0.2, alpha = 0.5, size = 1) +
+  facet_wrap(~ Probe, scales = "free_y") +
+  scale_fill_manual(values = c("Chemo" = "lightpink", "Standard" = "lightgreen")) +
+  labs(
+    title = "Expression of Selected Probes by Treatment Group",
+    x = "Treatment Group",
+    y = "Expression Level"
+  ) +
+  theme_minimal() +
+  theme(legend.position = "none")
+```
+
+---
+
+# Solution 3.3 — Heatmap interpretation
+
+Let's find the 15 most variable probes and plot.
+
+```{r sol-3-3}
+# Compute probe variances
+probe_vars <- apply(expression_matrix, 2, var)
+top_15_probes <- names(sort(probe_vars, decreasing = TRUE)[1:15])
+
+# Matrix subset
+heatmap_matrix <- t(expression_matrix[, top_15_probes])
+
+pheatmap(
+  heatmap_matrix,
+  scale = "row",
+  color = viridis::viridis(100),
+  show_colnames = FALSE,
+  main = "Top 15 Most Variable Probes (Viridis)"
+)
+```
+
+**Interpretation**: The heatmap shows strong co-expression blocks where groups of patients have coordinately high (yellow) or low (purple) expression across these top 15 highly variable probes. However, these patterns might not reflect true disease biology; instead, they could represent technical batch effects (e.g. sample processing dates or chips) or the abundance of specific cell types (e.g. tumor-infiltrating immune cells) rather than cell-intrinsic oncogenic processes.
+
+---
+
+# Solution 3.4 — PCA plot
+
+Let's compute PCA and color by event status.
+
+```{r sol-3-4}
+# Center and scale matrix
+pca_result <- prcomp(expression_matrix, center = TRUE, scale. = TRUE)
+
+pca_data <- as.data.frame(pca_result$x) %>%
+  rownames_to_column("patientID") %>%
+  left_join(clinical, by = "patientID") %>%
+  mutate(status_label = factor(if_else(status == 1, "Event", "Censored")))
+
+# Find 3 extreme outlier patients (by distance from PC1/PC2 origin)
+pca_data <- pca_data %>%
+  mutate(dist_origin = sqrt(PC1^2 + PC2^2)) %>%
+  arrange(desc(dist_origin))
+
+outliers <- pca_data %>% dplyr::slice_head(n = 3)
+
+ggplot(pca_data, aes(x = PC1, y = PC2, color = status_label)) +
+  geom_point(alpha = 0.6) +
+  geom_text(
+    data = outliers,
+    aes(label = patientID),
+    color = "black",
+    vjust = -0.5,
+    fontface = "bold"
+  ) +
+  scale_color_manual(values = c("Censored" = "grey70", "Event" = "red")) +
+  labs(
+    title = "PCA of Patient Expression Profiles",
+    x = "PC1",
+    y = "PC2",
+    color = "Clinical Status"
+  ) +
+  theme_minimal()
+```
+
+1. **Separation**: There is no clear separation between patients with the clinical event and censored patients along PC1 or PC2. This suggests that global gene expression variation is not dominated by survival status.
+2. **Outlier Investigation**: If a patient is more than 3 standard deviations from the PC1 mean, we should first investigate technical confounding factors: RNA quality (RIN score), hybridization batch, sample swapping, or clinical differences such as a different tumor subtype or an active secondary infection.
+
+---
+
+# Solution 3.5 — Publication-ready figure
+
+Let's format and save one of the figures.
+
+```{r sol-3-5}
+p <- ggplot(pca_data, aes(x = PC1, y = PC2, color = status_label)) +
+  geom_point(alpha = 0.7, size = 2) +
+  scale_color_manual(values = c("Censored" = "#4575b4", "Event" = "#d73027")) +
+  labs(
+    title = "Expression Space Principal Component Analysis",
+    subtitle = "Coloring indicates follow-up event status (breast cancer recurrence or death)",
+    x = "PC1 (explained variance)",
+    y = "PC2 (explained variance)",
+    color = "Patient Outcome",
+    caption = "Data Source: breast cancer clinical-omics cohort. N = 614 patients."
+  ) +
+  theme_classic() +
+  theme(
+    plot.title = element_text(face = "bold", size = 14),
+    plot.subtitle = element_text(color = "grey30", size = 10),
+    legend.position = "right"
+  )
+
+# Ensure outputs directory exists
+dir.create(here("outputs"), showWarnings = FALSE)
+ggsave(here("outputs", "module03_exercise_figure.png"), plot = p, width = 7, height = 5, dpi = 300)
+```

@@ -1,26 +1,34 @@
 Type: Project
 Package: data-science-for-biologists-az
-Title: R for Biologists — Data Science, Bioinformatics, Machine Learning, and Omics Analysis in R
+Title: R for Biologists — Data Science, Bioinformatics, Machine Learning, Omics, and Single-Cell Analysis in R
 Version: 1.0.0
 Description: A complete R curriculum for biologists and bioinformaticians covering data wrangling,
-    visualization, statistical reasoning, tidymodels-based machine learning, omics analysis with
-    limma, survival analysis with Cox models and penalized regression, and reproducible research
-    with renv and R Markdown. Uses real clinical and microarray expression data throughout.
+    visualization, statistical reasoning, tidymodels-based machine learning, bulk and single-cell
+    RNA-seq analysis (DESeq2, Seurat), pathway enrichment, survival analysis with Cox models,
+    and reproducible research with renv. Uses real clinical, microarray, and single-cell data.
 Encoding: UTF-8
 Depends:
     R (>= 4.1)
 Imports:
     broom,
+    DESeq2,
+    enrichR,
+    fgsea,
     glmnet,
     here,
+    knitr,
     limma,
+    patchwork,
     pheatmap,
     ranger,
     renv,
+    rmarkdown,
     scales,
+    Seurat,
     survival,
     survminer,
     themis,
     tidymodels,
     tidyverse,
+    viridis,
     vip
