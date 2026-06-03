@@ -1,0 +1,370 @@
+---
+title: "Module 8 - Survival Analysis and Omics Integration"
+output:
+  html_document:
+    toc: true
+    toc_depth: 2
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  message = FALSE,
+  warning = FALSE,
+  fig.width = 8,
+  fig.height = 5
+)
+
+set.seed(42)
+```
+
+# Biological Question
+
+Can patient survival be predicted from clinical features alone, from molecular expression alone, or does combining both types of data improve prediction, and what are the honest limits of each model?
+
+# Learning Objectives
+
+By the end of this module, learners should be able to:
+
+- explain censoring and why ignoring it produces biased survival estimates,
+- produce and interpret a Kaplan-Meier curve,
+- fit a Cox proportional hazards model and check the proportional hazards assumption,
+- apply penalized Cox regression for high-dimensional omics predictors,
+- compare clinical-only, omics-only, and combined models on an appropriate metric,
+- define risk groups from a continuous hazard score and explain the data-dredging risk,
+- state what survival analysis cannot establish without randomisation.
+
+# Prerequisites
+
+- Module 2: data wrangling and validation.
+- Module 4: statistical reasoning, multiple testing, and linear models.
+- Module 7: omics QC and probe-level association results.
+- Packages: `tidyverse`, `here`, `survival`, `survminer`, `glmnet`, `scales`.
+- Datasets: `data/clinical.csv`, `data/omics.csv`.
+
+# Setup
+
+```{r packages}
+library(tidyverse)
+library(here)
+library(survival)
+library(survminer)
+library(glmnet)
+library(scales)
+```
+
+# Why Survival Analysis Exists
+
+Standard regression assumes every unit has a measured outcome. In clinical cohorts, many patients are still alive at the end of follow-up. Treating those patients as non-events discards valid information. Treating them as events is wrong. Survival analysis handles this through censoring.
+
+```{r censoring-explanation}
+tribble(
+  ~patient_status,      ~follow_up_observed, ~event_occurred, ~correct_analysis,
+  "Died during study",  "Full follow-up",    "Yes",           "Event at observed time",
+  "Alive at study end", "Until study end",   "No (censored)", "Partial contribution to risk set",
+  "Lost to follow-up",  "Until last contact","No (censored)", "Partial contribution to risk set"
+)
+```
+
+Censored patients contribute information for the period they were observed. They are not excluded.
+
+# Data Input and Validation
+
+```{r load-data}
+clinical <- read_csv(here("data", "clinical.csv"), show_col_types = FALSE)
+omics    <- read_csv(here("data", "omics.csv"),    show_col_types = FALSE)
+
+stopifnot(!anyDuplicated(clinical$patientID))
+stopifnot(!anyDuplicated(omics$patientID))
+stopifnot(setequal(clinical$patientID, omics$patientID))
+
+omics_aligned <- omics %>%
+  slice(match(clinical$patientID, patientID))
+
+stopifnot(identical(clinical$patientID, omics_aligned$patientID))
+```
+
+```{r build-objects}
+# Clinical survival data
+surv_data <- clinical %>%
+  transmute(
+    patientID,
+    time      = time,
+    status    = status,
+    treatment = factor(
+      if_else(treatment == 1, "standard_plus_chemo", "standard"),
+      levels = c("standard", "standard_plus_chemo")
+    )
+  )
+
+# Expression matrix (patients x probes)
+expression_matrix <- omics_aligned %>%
+  select(-patientID) %>%
+  as.matrix()
+rownames(expression_matrix) <- omics_aligned$patientID
+
+tibble(
+  patients         = nrow(surv_data),
+  events           = sum(surv_data$status == 1),
+  censored         = sum(surv_data$status == 0),
+  event_rate       = mean(surv_data$status == 1),
+  median_follow_up = median(surv_data$time),
+  expression_probes = ncol(expression_matrix)
+)
+```
+
+The event rate and median follow-up determine how much statistical power exists. A cohort with 10 % events cannot reliably fit many independent predictors.
+
+# Kaplan-Meier Survival Curves
+
+The Kaplan-Meier estimator gives the probability of surviving past each event time without assuming any parametric form.
+
+```{r km-overall}
+km_overall <- survfit(Surv(time, status) ~ 1, data = surv_data)
+summary(km_overall, times = c(1, 2, 3, 4, 5))
+```
+
+```{r km-by-treatment}
+km_treatment <- survfit(Surv(time, status) ~ treatment, data = surv_data)
+
+ggsurvplot(
+  km_treatment,
+  data          = surv_data,
+  pval          = TRUE,
+  conf.int      = TRUE,
+  risk.table    = TRUE,
+  risk.table.height = 0.25,
+  palette       = c("#2a6f97", "#d73027"),
+  xlab          = "Time (years)",
+  ylab          = "Survival probability",
+  title         = "Kaplan-Meier: treatment groups",
+  legend.labs   = c("Standard", "Standard + chemo"),
+  ggtheme       = theme_minimal()
+)
+```
+
+The log-rank p-value tests whether the two curves differ, not whether the treatment is effective. Randomisation, not a survival curve, establishes causal treatment effects.
+
+# Cox Proportional Hazards Model
+
+The Cox model estimates how a predictor is associated with the hazard of experiencing the event at each point in time.
+
+```{r cox-clinical}
+cox_clinical <- coxph(
+  Surv(time, status) ~ treatment,
+  data = surv_data,
+  ties = "efron"
+)
+
+summary(cox_clinical)
+```
+
+The hazard ratio for `treatment_plus_chemo` is the factor by which the instantaneous event rate changes relative to the standard arm. A hazard ratio below 1 means the event rate is lower.
+
+```{r cox-schoenfeld}
+# Proportional hazards assumption: Schoenfeld residuals should show no trend over time
+ph_test <- cox.zph(cox_clinical)
+print(ph_test)
+```
+
+```{r cox-schoenfeld-plot}
+ggcoxzph(
+  ph_test,
+  ggtheme = theme_minimal(),
+  point.col = "#2a6f97"
+)
+```
+
+A significant Schoenfeld test (p < 0.05) suggests the hazard ratio changes over time, violating the proportional hazards assumption. If that happens, consider a time-stratified Cox model or report that the effect is non-constant.
+
+# Interpretation Checkpoint: What Cox Assumes
+
+Before trusting a Cox result, check these assumptions:
+
+```{r cox-assumptions}
+tribble(
+  ~assumption,                        ~check,
+  "Proportional hazards",             "Schoenfeld residual plot or test",
+  "Log-linearity of continuous preds","Martingale residuals or splines",
+  "No informative censoring",         "Discuss whether censoring is related to prognosis",
+  "Independence of observations",     "Confirm patients are not clustered within sites or families"
+)
+```
+
+# Penalized Cox for High-Dimensional Omics
+
+When predictors outnumber events, standard Cox regression is unstable. Elastic net penalisation shrinks coefficients toward zero and can select a sparse model.
+
+```{r penalized-cox}
+# Build the design matrix from expression probes
+x_omics <- expression_matrix[surv_data$patientID, , drop = FALSE]
+y_surv   <- Surv(surv_data$time, surv_data$status)
+
+# Cross-validated elastic net Cox (alpha = 0.5 balances lasso and ridge)
+set.seed(42)
+cv_cox_omics <- cv.glmnet(
+  x       = x_omics,
+  y       = y_surv,
+  family  = "cox",
+  alpha   = 0.5,
+  nfolds  = 5,
+  type.measure = "C"
+)
+
+plot(cv_cox_omics)
+title("Cross-validated elastic net Cox: concordance vs log(lambda)", line = 2.5)
+```
+
+```{r penalized-cox-probes}
+best_lambda <- cv_cox_omics$lambda.min
+
+selected_coefs <- coef(cv_cox_omics, s = best_lambda) %>%
+  as.matrix() %>%
+  as_tibble(rownames = "probe_id") %>%
+  rename(coefficient = `1`) %>%
+  filter(coefficient != 0) %>%
+  arrange(desc(abs(coefficient)))
+
+tibble(
+  lambda_min          = best_lambda,
+  probes_retained     = nrow(selected_coefs),
+  total_probes_tested = ncol(expression_matrix)
+)
+
+selected_coefs %>% slice_head(n = 15)
+```
+
+The elastic net selected a small subset of probes. These are the probes with the highest partial contribution to survival prediction under regularisation. They are not validated biomarkers.
+
+# Clinical-Only vs Omics-Only vs Combined Models
+
+A single concordance index (C-index, Harrell's C) summarises how well a model ranks patient risk. C = 0.5 is random ordering; C = 1 is perfect concordance.
+
+```{r concordance-clinical}
+lin_pred_clinical <- predict(cox_clinical, type = "lp")
+
+c_clinical <- survConcordance(
+  Surv(surv_data$time, surv_data$status) ~ lin_pred_clinical
+)$concordance
+```
+
+```{r concordance-omics}
+lin_pred_omics <- as.numeric(
+  predict(
+    cv_cox_omics,
+    newx = x_omics,
+    s    = best_lambda,
+    type = "link"
+  )
+)
+
+c_omics <- survConcordance(
+  Surv(surv_data$time, surv_data$status) ~ lin_pred_omics
+)$concordance
+```
+
+```{r concordance-combined}
+combined_df <- surv_data %>%
+  mutate(
+    lp_clinical = lin_pred_clinical,
+    lp_omics    = lin_pred_omics
+  )
+
+cox_combined <- coxph(
+  Surv(time, status) ~ lp_clinical + lp_omics,
+  data = combined_df
+)
+
+c_combined <- survConcordance(
+  Surv(combined_df$time, combined_df$status) ~ predict(cox_combined, type = "lp")
+)$concordance
+```
+
+```{r concordance-summary}
+tibble(
+  model      = c("Clinical only", "Omics only (elastic net)", "Combined"),
+  c_index    = round(c(c_clinical, c_omics, c_combined), 3),
+  note       = c(
+    "Treatment group only",
+    "Cross-validated linear predictor from penalized Cox",
+    "Both linear predictors combined in a Cox model"
+  )
+)
+```
+
+> **Warning:** These C-indices are computed on the same data used to fit the omics model. The omics C-index is optimistic. A proper comparison requires an independent validation cohort or nested cross-validation.
+
+# Risk Group Stratification
+
+Converting a continuous risk score into groups (high/low risk) is common in clinical reporting but carries a real overfitting risk if the cutpoint is chosen from the same data.
+
+```{r risk-groups}
+risk_df <- surv_data %>%
+  mutate(
+    risk_score  = lin_pred_omics,
+    risk_group  = if_else(risk_score > median(risk_score), "High risk", "Low risk"),
+    risk_group  = factor(risk_group, levels = c("Low risk", "High risk"))
+  )
+
+km_risk <- survfit(Surv(time, status) ~ risk_group, data = risk_df)
+
+ggsurvplot(
+  km_risk,
+  data          = risk_df,
+  pval          = TRUE,
+  conf.int      = TRUE,
+  risk.table    = TRUE,
+  risk.table.height = 0.25,
+  palette       = c("#2a6f97", "#d73027"),
+  xlab          = "Time (years)",
+  ylab          = "Survival probability",
+  title         = "KM by omics risk group (median split – training data only)",
+  legend.labs   = c("Low risk", "High risk"),
+  ggtheme       = theme_minimal()
+)
+```
+
+This stratification was derived from the same data used to build the model. The separation shown here is not evidence of external validity.
+
+# Biological Interpretation Limits
+
+```{r interpretation-limits}
+tribble(
+  ~claim,                                              ~honest_version,
+  "These probes predict survival",                    "These probes are associated with survival in this cohort under this model",
+  "Treatment improves survival",                      "Treatment group is associated with a different hazard in an observational cohort",
+  "Omics adds value over clinical predictors",        "Omics adds apparent value in-sample; validation is needed to confirm",
+  "High-risk patients should be treated differently", "Risk scores from research cohorts require clinical validation before any treatment decision"
+)
+```
+
+# Exercises
+
+1. Fit a Cox model that adds a continuous follow-up time as a covariate alongside treatment. Does the proportional hazards test change?
+2. Change the elastic net `alpha` to 1 (pure lasso). How does the number of selected probes change?
+3. Split the cohort 70/30 (stratified by event status) and compute the omics C-index on the held-out 30 %. How does it compare to the training C-index?
+4. Write a one-paragraph methods section describing the penalized Cox analysis, naming all choices: alpha, number of folds, lambda selection strategy, and validation approach.
+5. The median-split risk group shows significant KM separation. List three reasons why this finding might not replicate in a new cohort.
+
+# Common Failure Modes
+
+- Treating censored patients as non-events when building a logistic regression outcome.
+- Selecting a risk-group cutpoint that maximises separation on the same data used to fit the model.
+- Reporting in-sample C-index as evidence of clinical utility.
+- Fitting a Cox model with more predictors than events divided by ten.
+- Calling a hazard ratio a survival probability change without conversion.
+- Ignoring whether the proportional hazards assumption is plausible over the observed follow-up range.
+
+# Key Takeaways
+
+- Kaplan-Meier curves summarise observed survival without assumptions; Cox models estimate covariate associations.
+- Penalized Cox enables omics integration when predictors greatly outnumber events.
+- Comparing clinical-only, omics-only, and combined models requires a held-out validation set to be meaningful.
+- C-index and risk group separation computed on training data are optimistic and should not be reported as evidence of clinical value.
+- The biological question is whether the model generalises; answering that requires new data.
+
+# Reproducibility
+
+```{r session-info}
+sessionInfo()
+```

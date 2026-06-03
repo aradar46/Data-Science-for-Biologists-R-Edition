@@ -1,0 +1,127 @@
+---
+title: "Solutions — Module 4: Statistical Reasoning"
+output:
+  html_document:
+    toc: true
+    toc_depth: 2
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+library(tidyverse)
+library(here)
+set.seed(42)
+```
+
+# Solution 4.1 — Simulation: sampling variability
+
+```{r sol-4-1}
+sim_means <- function(n, reps = 1000) {
+  replicate(reps, mean(rnorm(n)))
+}
+
+results <- bind_rows(
+  tibble(n = 5,   sample_mean = sim_means(5)),
+  tibble(n = 20,  sample_mean = sim_means(20)),
+  tibble(n = 100, sample_mean = sim_means(100))
+) %>%
+  mutate(n = factor(paste0("n = ", n), levels = c("n = 5", "n = 20", "n = 100")))
+
+ggplot(results, aes(x = sample_mean, fill = n)) +
+  geom_histogram(bins = 40, alpha = 0.7, position = "identity") +
+  facet_wrap(~n) +
+  labs(
+    title = "Distribution of sample means under the Central Limit Theorem",
+    x = "Sample mean",
+    y = "Count"
+  ) +
+  theme_minimal() +
+  theme(legend.position = "none")
+```
+
+All distributions are approximately Normal regardless of sample size. Larger n produces a narrower (less variable) distribution, illustrating that standard error = σ / √n.
+
+# Solution 4.2 — Confidence intervals
+
+```{r sol-4-2}
+clinical <- read_csv(here("data", "clinical.csv"), show_col_types = FALSE)
+
+t.test(clinical$time)$conf.int
+
+ci_by_group <- clinical %>%
+  group_by(treatment) %>%
+  summarise(
+    n    = n(),
+    mean = mean(time),
+    se   = sd(time) / sqrt(n()),
+    lo   = mean - qt(0.975, n() - 1) * se,
+    hi   = mean + qt(0.975, n() - 1) * se
+  )
+
+ci_by_group
+
+ggplot(ci_by_group, aes(x = factor(treatment), y = mean, ymin = lo, ymax = hi)) +
+  geom_point(size = 3, color = "#2a6f97") +
+  geom_errorbar(width = 0.1, color = "#2a6f97") +
+  labs(
+    title = "Mean follow-up time with 95 % CI by treatment group",
+    x = "Treatment",
+    y = "Mean follow-up time (years)"
+  ) +
+  theme_minimal()
+```
+
+# Solution 4.3 — Multiple testing
+
+```{r sol-4-3}
+# Expected false positives under H0
+500 * 0.05
+
+# Bonferroni threshold
+0.05 / 500
+
+# BH: among 30 significant at 0.05, expected FDR of 5% means ~1-2 are false positives
+# The key point: p < 0.05 is insufficient when thousands of tests are performed.
+
+cat(
+  "A genome-wide scan at 0.05 expects", 500 * 0.05, "false positives.",
+  "\nBonferroni threshold:", round(0.05 / 500, 6),
+  "\nBH at 5% FDR limits expected false discoveries to 5% of discoveries, not 5% of all tests."
+)
+```
+
+# Solution 4.4 — Linear model interpretation
+
+```{r sol-4-4}
+lm_fit <- lm(time ~ treatment, data = clinical)
+summary(lm_fit)
+```
+
+The intercept is the estimated mean follow-up time for treatment group 0 (standard of care). The slope is the estimated difference in mean follow-up time for treatment group 1. The problem: linear regression assumes a symmetric, unbounded normal outcome. Survival times are right-skewed and censored. Ignoring censoring means treated patients who are still alive contribute as if they had a shorter follow-up than they actually did. A Cox proportional hazards model (`survival::coxph()`) is the appropriate approach.
+
+# Solution 4.5 — Effect sizes
+
+```{r sol-4-5}
+# Using time as the numeric outcome (though this ignores censoring)
+group_stats <- clinical %>%
+  group_by(treatment) %>%
+  summarise(mean = mean(time), sd = sd(time), n = n())
+
+pooled_sd <- sqrt(
+  ((group_stats$n[1] - 1) * group_stats$sd[1]^2 +
+   (group_stats$n[2] - 1) * group_stats$sd[2]^2) /
+  (sum(group_stats$n) - 2)
+)
+
+cohen_d <- abs(diff(group_stats$mean)) / pooled_sd
+cat("Cohen's d:", round(cohen_d, 3))
+
+# Interpretation
+case_when(
+  cohen_d < 0.2 ~ "Small",
+  cohen_d < 0.5 ~ "Medium",
+  TRUE ~ "Large"
+)
+```
+
+A small p-value tells you that the data are unlikely under the null hypothesis. It says nothing about the size of the effect. With 600+ patients, even a trivially small effect can produce p < 0.001. Effect sizes, confidence intervals, and clinical context determine whether a finding matters.

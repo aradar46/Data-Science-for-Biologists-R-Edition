@@ -1,8 +1,11 @@
 Type: Project
 Package: data-science-for-biologists-az
-Title: Data Science for Biologists Course Materials
-Version: 0.1.0
-Description: R Markdown course materials for biological data science, clinical data analysis, omics workflows, biomedical machine learning, and reproducible research.
+Title: Data Science for Biologists — R Course: Statistics, Machine Learning, Omics, and Survival Analysis
+Version: 1.0.0
+Description: A complete R curriculum for biologists and bioinformaticians covering data wrangling,
+    visualization, statistical reasoning, tidymodels-based machine learning, omics analysis with
+    limma, survival analysis with Cox models and penalized regression, and reproducible research
+    with renv and R Markdown. Uses real clinical and microarray expression data throughout.
 Encoding: UTF-8
 Depends:
     R (>= 4.1)
@@ -15,6 +18,7 @@ Imports:
     GGally,
     ggpubr,
     ggraph,
+    glmnet,
     here,
     knitr,
     maps,

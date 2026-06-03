@@ -1,0 +1,100 @@
+---
+title: "Solutions — Module 5: Modeling Foundations with Tidymodels"
+output:
+  html_document:
+    toc: true
+    toc_depth: 2
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+library(tidyverse)
+library(here)
+library(tidymodels)
+set.seed(42)
+```
+
+```{r load-data}
+clinical <- read_csv(here("data", "clinical.csv"), show_col_types = FALSE) %>%
+  mutate(
+    status    = factor(status, levels = c(0, 1), labels = c("censored", "event")),
+    treatment = factor(treatment)
+  )
+```
+
+# Solution 5.1 — Stratified splitting
+
+```{r sol-5-1}
+split <- initial_split(clinical, prop = 0.75, strata = status)
+train <- training(split)
+test  <- testing(split)
+
+bind_rows(
+  train %>% count(status) %>% mutate(set = "train", prop = n / sum(n)),
+  test  %>% count(status) %>% mutate(set = "test",  prop = n / sum(n))
+) %>%
+  select(set, status, n, prop)
+```
+
+Without stratification, small event rates can lead to the test set having no events at all, making AUC meaningless.
+
+# Solution 5.2 — Recipe with preprocessing
+
+```{r sol-5-2}
+rec <- recipe(status ~ treatment + time, data = train) %>%
+  step_dummy(all_nominal_predictors()) %>%
+  step_normalize(all_numeric_predictors())
+
+prepped <- prep(rec, training = train)
+juice(prepped) %>% slice_head(n = 5)
+```
+
+# Solution 5.3 — Resampling and metric comparison
+
+```{r sol-5-3}
+folds <- vfold_cv(train, v = 5, strata = status)
+
+lr_spec <- logistic_reg() %>% set_engine("glm")
+
+lr_wf <- workflow() %>%
+  add_recipe(rec) %>%
+  add_model(lr_spec)
+
+cv_results <- fit_resamples(
+  lr_wf,
+  resamples = folds,
+  metrics   = metric_set(accuracy, roc_auc, sensitivity)
+)
+
+collect_metrics(cv_results)
+
+# Accuracy is misleading because the majority class (censored) dominates.
+# A model predicting "censored" for all patients achieves:
+mean(train$status == "censored")
+```
+
+# Solution 5.4 — Leakage scenario
+
+The leakage step is computing mean expression per probe across **all 614 patients** before splitting. The test set observations contribute to the mean and variance used to select the 50 probes. The model has therefore already "seen" the test set during feature selection.
+
+Leakage-free sequence:
+
+1. Split 80/20.
+2. Inside the training fold: compute variance, filter probes, train the model.
+3. Apply the training-set filter threshold to the test set probes (do not recompute on the test set).
+4. Evaluate on the test set.
+
+In tidymodels: put `step_filter_missing()`, `step_zv()`, and `step_normalize()` inside the recipe — they are estimated only on the training data and applied to the test data.
+
+# Solution 5.5 — Final fit and test evaluation
+
+```{r sol-5-5}
+# Using the logistic regression workflow from 5.3
+final_fit <- last_fit(lr_wf, split)
+
+collect_metrics(final_fit)
+
+# Test AUC is typically slightly lower than cross-validation AUC because
+# CV was run on the training set; any model flexibility adapts to training patterns.
+# A large gap suggests overfitting.
+```

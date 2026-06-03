@@ -1,0 +1,90 @@
+---
+title: "Solutions — Module 1: R Foundations for Biological Data"
+output:
+  html_document:
+    toc: true
+    toc_depth: 2
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+library(tidyverse)
+set.seed(42)
+```
+
+# Solution 1.1 — Vectors and factors
+
+```{r sol-1-1}
+expr_class <- c("high", "low", "medium", "high", "high",
+                "low", "medium", "low", "high", "medium")
+
+expr_factor <- factor(expr_class, levels = c("low", "medium", "high"))
+print(expr_factor)
+
+table(expr_factor)
+```
+
+The levels are printed in the specified order: low, medium, high. `table()` respects factor level ordering.
+
+# Solution 1.2 — Tibbles and data types
+
+```{r sol-1-2}
+patients <- tibble(
+  patientID = c("pt001", "pt002", "pt003", "pt004", "pt005"),
+  age       = c(52L, 67L, 45L, 58L, 71L),
+  treatment = c("A", "B", "A", "B", "A"),
+  response  = c(TRUE, FALSE, TRUE, TRUE, FALSE)
+)
+
+sapply(patients, class)
+
+patients <- patients %>% mutate(treatment = factor(treatment))
+
+patients %>% filter(age > 55, treatment == "A")
+```
+
+# Solution 1.3 — File reading
+
+```{r sol-1-3}
+library(here)
+clinical <- read_csv(here("data", "clinical.csv"), show_col_types = FALSE)
+
+colnames(clinical)
+nrow(clinical)
+
+clinical %>% select(where(is.numeric)) %>% slice_head(n = 5)
+```
+
+# Solution 1.4 — Functions
+
+```{r sol-1-4}
+summarise_vector <- function(x) {
+  list(
+    n         = length(x),
+    mean      = mean(x, na.rm = TRUE),
+    sd        = sd(x, na.rm = TRUE),
+    min       = min(x, na.rm = TRUE),
+    max       = max(x, na.rm = TRUE),
+    n_missing = sum(is.na(x))
+  )
+}
+
+test_vec <- rnorm(20)
+test_vec[c(3, 11, 17)] <- NA
+
+summarise_vector(test_vec)
+```
+
+# Solution 1.5 — String work
+
+```{r sol-1-5}
+probes <- c("200008_s_at", "200052_s_at", "1405_i_at", "200600_at", "200604_s_at")
+
+sum(str_detect(probes, "_s_at"))
+
+str_extract(probes, "^[0-9]+")
+
+sort(probes)
+```
+
+`str_extract("^[0-9]+")` captures the run of digits before the first underscore. `1405_i_at` sorts first alphabetically because `1` < `2`.

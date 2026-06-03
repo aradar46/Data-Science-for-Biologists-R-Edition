@@ -1,0 +1,101 @@
+---
+title: "Solutions — Module 2: Data Wrangling and Validation"
+output:
+  html_document:
+    toc: true
+    toc_depth: 2
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+library(tidyverse)
+library(here)
+set.seed(42)
+```
+
+# Solution 2.1 — Missingness audit
+
+```{r sol-2-1}
+clinical <- read_csv(here("data", "clinical.csv"), show_col_types = FALSE)
+
+colSums(is.na(clinical))
+
+colMeans(is.na(clinical)) > 0.05
+
+clinical <- clinical %>%
+  mutate(complete_case = complete.cases(across(everything())))
+
+sum(!clinical$complete_case)
+```
+
+All clinical columns show 0 missing values in this dataset, so every patient is a complete case.
+
+# Solution 2.2 — Duplicate detection
+
+```{r sol-2-2}
+omics <- read_csv(here("data", "omics.csv"), show_col_types = FALSE)
+
+anyDuplicated(omics$patientID)
+
+stopifnot(!anyDuplicated(omics$patientID))
+
+# Consequence: if rows 10 and 11 were duplicated, a join would create an
+# extra row in the merged table and inflate apparent sample size. Summary
+# statistics and model training would be biased toward those two patients.
+```
+
+# Solution 2.3 — Safe joins
+
+```{r sol-2-3}
+inner <- inner_join(clinical, omics, by = "patientID")
+nrow(inner)
+
+left  <- left_join(clinical, omics, by = "patientID")
+nrow(left)
+
+stopifnot(nrow(left) == nrow(clinical))
+stopifnot(!anyDuplicated(left$patientID))
+```
+
+`inner_join` and `left_join` both produce 614 rows because every clinical ID matches exactly one omics ID.
+
+# Solution 2.4 — Grouped summaries
+
+```{r sol-2-4}
+clinical %>%
+  group_by(treatment) %>%
+  summarise(
+    n          = n(),
+    mean_time  = mean(time),
+    event_rate = mean(status),
+    iqr_time   = IQR(time)
+  )
+
+clinical %>%
+  count(treatment, status)
+```
+
+# Solution 2.5 — Reshaping
+
+```{r sol-2-5}
+wide <- tibble(
+  patientID = paste0("pt", 1:4),
+  probe_A   = c(0.1, 0.4, -0.2, 0.7),
+  probe_B   = c(-0.3, 0.2, 0.5, -0.1),
+  probe_C   = c(0.8, -0.5, 0.3, 0.2)
+)
+
+long <- wide %>%
+  pivot_longer(-patientID, names_to = "probe_id", values_to = "expression")
+long
+
+long_positive <- long %>% filter(expression > 0)
+long_positive
+
+# Pivoting back: rows with expression <= 0 are gone, so the wide form
+# will have NA for those probe/patient combinations.
+long_positive %>%
+  pivot_wider(names_from = probe_id, values_from = expression)
+```
+
+The wide table does not match the original because filtering removed negative values. This demonstrates that information lost in long form cannot be recovered without the original data.
